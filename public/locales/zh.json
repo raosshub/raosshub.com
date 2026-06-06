@@ -1,0 +1,799 @@
+{
+  "meta": {
+    "title": "QR114i Salaam Stream Hub — RAOSS Hub 项目仪表板",
+    "description": "AC792N 架构 — 项目仪表板"
+  },
+  "config": {
+    "projectName": "QR114i Salaam Stream",
+    "version": "1.0",
+    "logoPath": "assets/images/logo.png",
+    "faviconPath": "assets/images/favicon.ico",
+    "threeDPath": "assets/3D/qr114i.glb",
+    "timeline_quarters": [
+      "Q3 2026",
+      "Q4 2026",
+      "Q1 2027",
+      "Q2 2027",
+      "Q3 2027",
+      "Q4 2027"
+    ],
+    "chip": {
+      "name": "AC792N",
+      "fullName": "杰里 AC792N（梧桐二代）",
+      "package": "AC7926A QFN",
+      "sdk": "JL_SDK"
+    },
+    "display": {
+      "size": "7英寸",
+      "resolution": "1280×800",
+      "interface": "RGB888",
+      "fps": "30+",
+      "pixelClock": "~40MHz"
+    },
+    "battery": "22,000mAh",
+    "router": "Habolink AF007",
+    "teams": [
+      {
+        "id": "react",
+        "icon": "react",
+        "color": "#1e3a5f",
+        "text": "#58a6ff"
+      },
+      {
+        "id": "pcba",
+        "icon": "pcba",
+        "color": "#2d1b4e",
+        "text": "#bc8cff"
+      },
+      {
+        "id": "firmware",
+        "icon": "firmware",
+        "color": "#0d2818",
+        "text": "#3fb950"
+      },
+      {
+        "id": "tft",
+        "icon": "tft",
+        "color": "#3d2000",
+        "text": "#d29922"
+      },
+      {
+        "id": "router",
+        "icon": "router",
+        "color": "#0d2626",
+        "text": "#56d3ba"
+      },
+      {
+        "id": "charger",
+        "icon": "charger",
+        "color": "#3d0d0d",
+        "text": "#f85149"
+      },
+      {
+        "id": "shell",
+        "icon": "shell",
+        "color": "#1e1a14",
+        "text": "#8b949e"
+      }
+    ],
+    "auth": {
+      "users": [
+        {
+          "username": "admin@raoss.com",
+          "password": "125800**",
+          "name": "超级管理员",
+          "role": "superadmin",
+          "teams": [
+            "overview",
+            "react",
+            "pcba",
+            "firmware",
+            "tft",
+            "router",
+            "charger",
+            "shell"
+          ]
+        },
+        {
+          "username": "pcba@raoss.com",
+          "password": "Pc123456**",
+          "name": "PCBA 负责人",
+          "role": "user",
+          "teams": [
+            "pcba"
+          ]
+        },
+        {
+          "username": "firmware@raoss.com",
+          "password": "Fw123456**",
+          "name": "固件负责人",
+          "role": "user",
+          "teams": [
+            "firmware",
+            "tft"
+          ]
+        },
+        {
+          "username": "react@raoss.com",
+          "password": "Rn123456**",
+          "name": "React Native 开发",
+          "role": "user",
+          "teams": [
+            "react"
+          ]
+        }
+      ]
+    }
+  },
+  "header": {
+    "brand_project_name": "QR114i Salaam Stream",
+    "brand_subtitle": "AC792N 架构",
+    "brand_subtitle2": "项目仪表板",
+    "badge_status": "开发中",
+    "lang_toggle": "EN",
+    "btn_logout": "退出登录",
+    "btn_kimi": "AI 助手",
+    "search_placeholder": "搜索…"
+  },
+  "sidebar_footer": {
+    "version_line": "文档版本 1.0",
+    "update_line": "最后更新：2026 Q2",
+    "reference_line": "本文档为动态参考文档。各团队应在每次冲刺前检查更新。"
+  },
+  "login": {
+    "title": "登录",
+    "subtitle": "继续访问 QR114i Salaam Stream Hub",
+    "label_email": "邮箱 / 用户名",
+    "label_password": "密码",
+    "placeholder_email": "admin@raoss.com",
+    "placeholder_password": "请输入密码",
+    "remember_me": "记住我",
+    "btn_signin": "登录",
+    "error_invalid": "邮箱或密码无效。",
+    "error_empty": "请输入邮箱和密码。",
+    "error_no_teams": "您的账户未分配团队权限。请联系架构团队负责人。",
+    "footer_copyright": "© 2026 RAOSS HK COMPANY LIMITED"
+  },
+  "nda": {
+    "title": "保密协议",
+    "subtitle": "保密与访问条款",
+    "body": [
+      "**保密性**：本仪表板中的所有信息均为 RAOSS HK COMPANY LIMITED 的严格保密和专有信息。",
+      "**目的**：访问权限仅授予为 QR114i Salaam Stream Hub 项目做出贡献的相关人员。",
+      "**禁止分发**：未经书面批准，您不得复制、截图、下载、转发或分享任何文档或数据。",
+      "**归还/销毁**：项目完成后，您同意归还或永久删除所有项目材料副本。",
+      "**违约**：任何违反本协议的行为将导致立即撤销访问权限及法律追责。",
+      "**确认**：点击\"我同意\"即表示您已阅读、理解并接受上述所有条款。"
+    ],
+    "checkbox": "我已阅读并同意保密协议。",
+    "btn_agree": "我同意",
+    "btn_decline": "拒绝并退出",
+    "alert_decline": "您必须同意保密协议才能访问此仪表板。"
+  },
+  "kimi": {
+    "title": "AI 助手（Kimi）",
+    "subtitle": "仅限管理员的 JSON 内容编辑器",
+    "hint_title": "使用方法：",
+    "hints": [
+      "将当前英文或中文 JSON 内容加载到编辑器中",
+      "直接编辑或描述您希望进行的更改",
+      "点击\"AI 转换\"提交修改指令",
+      "审查结果后选择下载或应用至实时预览"
+    ],
+    "api_notice": "POST /v1/messages → Kimi 代理 → localhost:3001",
+    "btn_load_en": "加载英文 JSON",
+    "btn_load_zh": "加载中文 JSON",
+    "btn_transform": "AI 转换",
+    "btn_download": "下载 JSON",
+    "btn_apply": "应用至预览",
+    "btn_close": "关闭",
+    "btn_save_server": "保存至服务器",
+    "btn_insights": "AI 洞察",
+    "editor_placeholder": "在此粘贴 JSON 内容，或点击加载当前文件…",
+    "transform_placeholder": "描述您希望 AI 进行的更改（例如：将所有 Q3 2026 日期改为 Q4 2026）…"
+  },
+  "nav": {
+    "overview": "概览",
+    "react": "移动应用",
+    "pcba": "PCBA",
+    "firmware": "固件",
+    "tft": "TFT 屏幕",
+    "router": "路由器",
+    "charger": "充电器",
+    "shell": "外壳",
+    "settings": "设置"
+  },
+  "team_tabs": {
+    "overview": "工作范围",
+    "deliverables": "交付物",
+    "collaboration": "HUB 聊天",
+    "files": "文件",
+    "pdf": "PDF 审阅",
+    "gallery": "图库"
+  },
+  "overview": {
+    "kpi_open_tasks": "待办事项",
+    "kpi_milestones": "里程碑",
+    "kpi_teams": "团队数",
+    "kanban_no_milestones": "暂无内容",
+    "timeline_title": "项目时间线",
+    "action_table_priority": "优先级",
+    "action_table_task": "任务",
+    "action_table_owner": "负责人",
+    "action_table_due": "截止日期",
+    "action_table_status": "标签"
+  },
+  "deliverables": {
+    "no_deliverables": "暂无交付物。"
+  },
+  "settings": {
+    "title": "设置",
+    "language": "语言",
+    "current_language": "当前语言",
+    "current_language_en": "英文",
+    "current_language_zh": "中文",
+    "btn_english": "English",
+    "btn_chinese": "中文",
+    "nda": "保密协议",
+    "nda_status": "状态",
+    "nda_status_accepted": "已接受",
+    "nda_status_not_accepted": "未接受",
+    "nda_view_button": "查看协议",
+    "theme": "外观",
+    "current_theme": "当前主题",
+    "current_theme_dark": "深色",
+    "current_theme_light": "浅色",
+    "switch_to_light": "切换至浅色模式",
+    "switch_to_dark": "切换至深色模式"
+  },
+  "collab": {
+    "files": {
+      "title": "文件",
+      "placeholder": "GET /api/teams/{teamId}/files",
+      "upload_btn": "上传文件",
+      "headers": [
+        "文件名",
+        "大小",
+        "上传者",
+        "日期",
+        "操作"
+      ],
+      "empty_message": "暂无文件。连接后端以启用文件管理功能。",
+      "btn_download": "下载"
+    }
+  },
+  "sections": {
+    "executive_summary": {
+      "title": "执行摘要与核心架构",
+      "intro": "本项目基于杰里 AC792N（梧桐二代）多媒体 SoC 构建——这是一款集音频播放、显示驱动、WiFi/BLE 及电源管理于一体的单芯片解决方案。",
+      "features": {
+        "audio": "音频播放（DAC / MP3）",
+        "display": "TFT 显示驱动（RGB888 7英寸）",
+        "wifi": "WiFi 802.11b/g/n（NTP / API 同步）",
+        "ble": "蓝牙 5.0（移动应用 BLE）",
+        "touch": "触控按键处理（ADKEY）",
+        "pmu": "电源管理单元（PMU）"
+      }
+    },
+    "timeline": {
+      "title": "项目时间线与里程碑",
+      "items": [
+        {
+          "quarter": "Q3 2026",
+          "title": "需求分析与数据手册审查",
+          "desc": "AC792N 功能评估。硬件设计规范审查。供应商样品获取。",
+          "tags": [
+            "PCBA",
+            "固件"
+          ],
+          "status": "current"
+        },
+        {
+          "quarter": "Q3 2026",
+          "title": "SDK 环境搭建",
+          "desc": "杰里 IDE 与 JL_SDK 配置完成。LVGL 移植启动。",
+          "tags": [
+            "固件",
+            "TFT 屏幕"
+          ],
+          "status": "pending"
+        },
+        {
+          "quarter": "Q4 2026",
+          "title": "PCB 布局与原型制作（EVT）",
+          "desc": "4层 PCB 含阻抗控制。首批原型组装。",
+          "tags": [
+            "PCBA",
+            "固件",
+            "外壳"
+          ],
+          "status": "pending"
+        },
+        {
+          "quarter": "Q1 2027",
+          "title": "固件集成与 BLE 配网",
+          "desc": "FreeRTOS 任务：显示驱动、音频 MP3 解码、WiFi STA、BLE GATT 服务器。",
+          "tags": [
+            "固件",
+            "移动应用"
+          ],
+          "status": "pending"
+        },
+        {
+          "quarter": "Q2 2027",
+          "title": "设计验证测试（DVT）",
+          "desc": "全功能验证。共存干扰测试。",
+          "tags": [
+            "全体团队"
+          ],
+          "status": "pending"
+        },
+        {
+          "quarter": "Q3 2027",
+          "title": "PVT 与认证",
+          "desc": "CE/FCC/IC 认证。Qi 无线充电认证。100 台试产。",
+          "tags": [
+            "PCBA",
+            "外壳",
+            "充电器"
+          ],
+          "status": "pending"
+        },
+        {
+          "quarter": "Q4 2027",
+          "title": "量产爬坡",
+          "desc": "模具定型。目标产能 5000 台/月。OTA 更新基础设施上线。",
+          "tags": [
+            "全体团队"
+          ],
+          "status": "pending"
+        }
+      ]
+    },
+    "interfaces": {
+      "title": "高层通信接口",
+      "headers": [
+        "接口",
+        "源",
+        "目标",
+        "协议",
+        "数据内容"
+      ],
+      "rows": [
+        [
+          "应用 ↔ 设备",
+          "手机",
+          "AC792N (蓝牙)",
+          "BLE 5.0",
+          "WiFi 凭证、位置、诵经者索引"
+        ],
+        [
+          "云端 ↔ 设备",
+          "后端",
+          "AC792N (WiFi)",
+          "HTTPS",
+          "JSON 礼拜时间表"
+        ],
+        [
+          "设备 ↔ 路由器",
+          "AC792N",
+          "Habolink AF007",
+          "802.11b/g/n",
+          "互联网访问（TCP/IP）"
+        ],
+        [
+          "音频存储",
+          "AC792N",
+          "Micro SD",
+          "SDIO 4位",
+          "MP3 文件（15 位诵经者）"
+        ],
+        [
+          "显示",
+          "AC792N",
+          "7英寸 TFT",
+          "RGB888",
+          "像素数据"
+        ]
+      ]
+    },
+    "risks": {
+      "title": "风险与缓解措施",
+      "headers": [
+        "风险",
+        "缓解措施"
+      ],
+      "rows": [
+        [
+          "1280×800 显示带宽",
+          "若 24 位带宽不足，可使用 16 位 RGB565 格式。"
+        ],
+        [
+          "WiFi 对音频的干扰",
+          "严格遵循数据手册 4.5 和 4.6 节的布局规则，分离模拟地。"
+        ],
+        [
+          "铝框架内的射频范围",
+          "在设备外壳顶部 20mm 设计塑料射频窗口——必须实施。"
+        ],
+        [
+          "晶振漂移（计时）",
+          "使用 ±10ppm 精度的 24MHz 和 32.768kHz 晶振，来自经认证供应商。"
+        ]
+      ]
+    },
+    "responsibility": {
+      "title": "团队职责矩阵",
+      "headers": [
+        "团队",
+        "负责人 / 组长",
+        "主要职责"
+      ],
+      "rows": [
+        [
+          "移动应用 & 后端",
+          "待分配",
+          "移动应用（iOS/Android）、BLE 配网、礼拜时间 API、OTA 托管"
+        ],
+        [
+          "PCBA",
+          "待分配",
+          "AC792N 原理图、4层 PCB 布局、电源树、音频走线"
+        ],
+        [
+          "固件",
+          "待分配",
+          "FreeRTOS 应用、LVGL 界面、MP3 播放、WiFi/BLE 栈、电源管理"
+        ],
+        [
+          "TFT 屏幕",
+          "待分配",
+          "面板选型（1280×800 RGB888）、触控控制器（GT911）、时序初始化"
+        ],
+        [
+          "路由器（海博玲）",
+          "待分配",
+          "4G 调制解调器集成、天线布置、共存测试"
+        ],
+        [
+          "充电器（Qi）",
+          "待分配",
+          "无线充电线圈设计、屏蔽、USB-C 输出、认证"
+        ],
+        [
+          "外壳",
+          "待分配",
+          "ABS + 铝合金外壳、射频窗口、天线禁区"
+        ]
+      ]
+    },
+    "actions": {
+      "title": "待办行动项",
+      "items": [
+        {
+          "priority": "high",
+          "title": "确认 1280×800 面板供应商并验证 AC792N 在 40MHz 时的 RGB 时序",
+          "owner": "TFT 屏幕团队",
+          "due": "Q3 2026",
+          "tag": "硬件",
+          "tag_class": "feature"
+        },
+        {
+          "priority": "high",
+          "title": "布局审查：按图 4.5 进行 DCVDD14/WFVDD14 1.4V DCDC 走线",
+          "owner": "PCBA 团队",
+          "due": "EVT 前",
+          "tag": "审查",
+          "tag_class": "review"
+        },
+        {
+          "priority": "high",
+          "title": "验证外壳顶部 20mm 的塑料射频窗口（天线禁区）",
+          "owner": "外壳团队",
+          "due": "Q3 2026",
+          "tag": "阻塞",
+          "tag_class": "blocked"
+        },
+        {
+          "priority": "medium",
+          "title": "将 LVGL v8.x 移植至 JL_SDK 并在 1280×800 上验证 30 FPS",
+          "owner": "固件团队",
+          "due": "Q3 2026",
+          "tag": "软件",
+          "tag_class": "feature"
+        },
+        {
+          "priority": "medium",
+          "title": "定义 BLE GATT 服务规范，用于 Wi-Fi 凭证交换",
+          "owner": "移动应用+固件",
+          "due": "Q3 2026",
+          "tag": "规格",
+          "tag_class": "feature"
+        },
+        {
+          "priority": "medium",
+          "title": "执行共存测试：4G 发射 vs AC792N WiFi 接收干扰",
+          "owner": "路由器团队",
+          "due": "DVT 阶段",
+          "tag": "测试",
+          "tag_class": "review"
+        },
+        {
+          "priority": "low",
+          "title": "向认可供应商采购 ±10ppm 24MHz 及 32.768kHz 晶振",
+          "owner": "PCBA 团队",
+          "due": "EVT 试产",
+          "tag": "采购",
+          "tag_class": "feature"
+        },
+        {
+          "priority": "low",
+          "title": "Qi 线圈铁镍合金屏蔽 vs AC792N DCDC 电感的验证",
+          "owner": "充电器团队",
+          "due": "Q3 2027",
+          "tag": "测试",
+          "tag_class": "review"
+        }
+      ]
+    },
+    "version_history": {
+      "title": "文档版本历史",
+      "headers": [
+        "版本",
+        "日期",
+        "作者",
+        "变更说明"
+      ],
+      "rows": [
+        [
+          "1.0",
+          "2026-Q2",
+          "架构团队",
+          "基于 AC792N 统一 SoC 的初始硬件规格。以单芯片架构替代双芯片方案（ESP32-S3 + AC6966）。"
+        ]
+      ]
+    },
+    "footer": {
+      "line1": "QR114i Salaam Stream Hub — 项目开发圣经 v1.0",
+      "line2": "本文档为动态参考文档。",
+      "line3": "最后更新：2026 Q2 — AC792N 架构",
+      "copyright": "© 2026 RAOSS HK COMPANY LIMITED"
+    },
+    "team_react": {
+      "title": "团队：移动应用开发",
+      "subtitle": "移动应用（iOS/Android）及云同步服务器",
+      "scope_title": "工作范围",
+      "scopes": [
+        {
+          "heading": "1. 移动应用功能",
+          "items": [
+            "BLE GATT 客户端 — 扫描 QR114i-Service 并配置 Wi-Fi 凭证",
+            "礼拜时间 API 集成 — 通过 WiFi 将时间表同步至设备",
+            "位置服务 — 自动检测城市以获取正确的礼拜时间",
+            "诵经者选择 — 15 位诵经者及预览播放",
+            "OTA 触发 — 从应用发起固件更新"
+          ]
+        },
+        {
+          "heading": "2. 云同步服务器",
+          "items": [
+            "REST API 端点：GET /api/prayer-times?city=&date=",
+            "认证：基于 JWT 的设备注册",
+            "OTA 托管：带 SHA256 校验的版本化 .fw 固件包"
+          ]
+        }
+      ],
+      "deliverables_title": "交付物",
+      "deliverables": [
+        "iOS + Android 应用（React Native 或 Flutter）",
+        "含错误处理的 BLE 配网流程",
+        "云 API 文档",
+        "OTA 更新流水线"
+      ],
+      "actions": [],
+      "actions_title": "行动项"
+    },
+    "team_pcba": {
+      "title": "团队：PCBA 设计",
+      "subtitle": "AC792N 原理图与 4 层 PCB 布局",
+      "scope_title": "工作范围",
+      "scopes": [
+        {
+          "heading": "1. 电源树",
+          "items": [
+            "AC792N 需要：DVDD33（3.3V）、DVDD12（1.2V）、DCVDD14/WFVDD14（1.4V DCDC）",
+            "电池：22,000mAh 锂离子，含电量计 IC",
+            "USB-C PD：充电输入 + 移动设备充电输出",
+            "Qi 无线充电线圈：与 DCDC 电感隔离（>30mm 或铁镍合金屏蔽）"
+          ]
+        },
+        {
+          "heading": "2. 音频走线",
+          "items": [
+            "AC792N DAC 输出 → D 类放大器 → 扬声器",
+            "模拟地平面隔离 — 模拟区域下方不走数字线",
+            "严格遵循 AC792N 数据手册 4.5 和 4.6 节"
+          ]
+        },
+        {
+          "heading": "3. 晶振与时钟",
+          "items": [
+            "24MHz 主晶振：±10ppm 公差（第 2.2 节）",
+            "32.768kHz RTC 晶振：±10ppm 公差，用于计时",
+            "布局：距 AC792N 5mm 以内，走线尽量短"
+          ]
+        }
+      ],
+      "deliverables_title": "交付物",
+      "deliverables": [
+        "原理图（KiCad/Altium）含 BOM",
+        "4 层 PCB Gerber 文件含阻抗控制说明",
+        "布局审查报告（DCDC、音频、射频区域）",
+        "EVT 原型（10 台）"
+      ],
+      "actions": [],
+      "actions_title": "行动项"
+    },
+    "team_firmware": {
+      "title": "团队：固件开发",
+      "subtitle": "杰里 AC792N — JL_SDK / FreeRTOS",
+      "scope_title": "工作范围",
+      "scopes": [
+        {
+          "heading": "1. 显示与界面",
+          "items": [
+            "LVGL v8.x 移植至 JL_SDK — 目标 30+ FPS（1280×800 RGB888）",
+            "礼拜时间 UI：下一次礼拜倒计时、当前时间、诵经者姓名",
+            "设置界面：语言、亮度、音量"
+          ]
+        },
+        {
+          "heading": "2. 阿赞与音频逻辑",
+          "items": [
+            "计时器：32.768kHz RTC 晶振，精度 ±2 分钟/年",
+            "唤醒：RTC 闹钟从睡眠模式唤醒 AC792N",
+            "播放：SD 卡 → DAC → 放大器。目录：RECITER_01/azan.mp3"
+          ]
+        },
+        {
+          "heading": "3. WiFi 与 BLE 管理",
+          "items": [
+            "WiFi STA 模式：连接家庭路由器进行 NTP 和礼拜时间 API 同步",
+            "BLE 服务端：广播 QR114i-Service 供移动应用配置"
+          ]
+        },
+        {
+          "heading": "4. 电源状态机",
+          "items": [
+            "监测 VBAT 以检测 USB-C 断电",
+            "电池模式：将 CPU 时钟降至 80MHz，禁用 EN_4G_PWR，禁用无线充电器"
+          ]
+        }
+      ],
+      "deliverables_title": "交付物",
+      "deliverables": [
+        ".fw 更新固件包（通过 PC 工具 USB 直接升级）",
+        "RF 校准报告：24MHz 晶振频偏 ±20ppm 以内"
+      ],
+      "actions": [],
+      "actions_title": "行动项"
+    },
+    "team_tft": {
+      "title": "团队：TFT 屏幕",
+      "subtitle": "7 英寸显示屏与触控集成",
+      "scope_title": "工作范围",
+      "scopes": [
+        {
+          "heading": "1. 面板选型",
+          "items": [
+            "分辨率：1280×800（RGB888）— 在 AC792N 上验证 30+ FPS",
+            "接口：40 针 FPC（24 位 RGB、HSYNC、VSYNC、DE、CLK）",
+            "时序：像素时钟 ~40MHz，前廊 8，后廊 8，同步宽度 4"
+          ]
+        },
+        {
+          "heading": "2. 触控面板",
+          "items": [
+            "方式：I2C 电容触控控制器（如 GT911）",
+            "连接：GPIO 配置为固件中的 I2C",
+            "中断线：低电平有效 INT 连接至 AC792N GPIO"
+          ]
+        }
+      ],
+      "deliverables_title": "交付物",
+      "deliverables": [
+        "面板时序初始化代码（前廊、后廊、像素时钟）",
+        "AC792N SDK 的 LVGL 显示驱动",
+        "触控校准数据"
+      ],
+      "actions": [],
+      "actions_title": "行动项"
+    },
+    "team_router": {
+      "title": "团队：内置路由器（Habolink AF007）",
+      "subtitle": "4G LTE 网络连接",
+      "scope_title": "工作范围",
+      "items": [
+        "隔离：当 VBUS 不存在（电池模式）时，AC792N 关闭路由器电源轨（3.8V）",
+        "天线：路由器天线必须距 AC792N 板载 PCB 天线 >15mm",
+        "集成：SIM 卡槽位于 ABS 外壳底部边缘",
+        "共存：必须通过 DVT 阶段的 4G 发射 vs AC792N WiFi 接收干扰测试"
+      ],
+      "deliverables_title": "交付物",
+      "deliverables": [
+        "共存干扰测试报告（4G 发射 vs AC792N WiFi 接收）"
+      ],
+      "actions": [],
+      "actions_title": "行动项"
+    },
+    "team_charger": {
+      "title": "团队：内置移动充电器",
+      "subtitle": "无线充电与 USB-C 输出",
+      "scope_title": "工作范围",
+      "items": [
+        "Qi 无线充电线圈：使用铁镍合金屏蔽，防止对 AC792N DCDC 电感造成干扰",
+        "物理隔离：Qi 线圈与 DCDC 电感间距 >30mm，或使用铁镍合金屏蔽",
+        "USB-C 输出：设备侧面 5V/2A 移动设备充电口",
+        "安全：过压和热保护"
+      ],
+      "deliverables_title": "交付物",
+      "deliverables": [
+        "Qi 无线充电认证",
+        "磁场干扰测试报告（Qi 线圈 vs DCDC 电感）"
+      ],
+      "actions": [],
+      "actions_title": "行动项"
+    },
+    "team_shell": {
+      "title": "团队：外壳",
+      "subtitle": "机械结构设计 — ABS + 铝合金",
+      "scope_title": "工作范围",
+      "antenna_note": {
+        "title": "PCB 天线禁区（关键 — 数据手册第 5 节）",
+        "body": "ABS 内壳顶部 20mm 必须完全使用塑料材质。天线禁区内不得有任何金属。"
+      },
+      "scopes": [
+        {
+          "heading": "射频窗口设计（关键）",
+          "items": [
+            "AC792N 的板载 PCB 走线天线需要清晰的射频窗口",
+            "1.8mm 铝框架充当法拉第笼，会阻挡射频",
+            "设计要求：ABS 内壳顶部 20mm 必须完全使用塑料",
+            "间距：天线走线周围 8-10mm 无金属区域（图 5.1）"
+          ]
+        },
+        {
+          "heading": "机械需求",
+          "items": [
+            "显示屏：7 英寸面板开孔，含 40 针 FPC 走线通道",
+            "SIM 卡槽：底部边缘可访问",
+            "USB-C 接口：充电输入 + 移动输出，位于侧面",
+            "音量/电源按键：侧面安装的触觉按钮",
+            "扬声器网格：正面朝向，最小开口面积 10cm²"
+          ]
+        }
+      ],
+      "deliverables_title": "交付物",
+      "deliverables": [
+        "射频窗口设计验证（铝框架中的塑料区域）",
+        "天线区域机械图纸（8-10mm 间距已记录）",
+        "用于 PCBA 配合检验的 3D CAD 文件（.step）"
+      ],
+      "actions": [],
+      "actions_title": "行动项"
+    }
+  },
+  "ai_insights": {
+    "title": "AI 产品洞察",
+    "subtitle": "Kimi 驱动的全团队讨论分析",
+    "empty_title": "暂无 AI 洞察",
+    "empty_desc": "在 AI 助手面板中点击\"AI 洞察\"，以分析所有团队讨论。",
+    "loading_title": "正在使用 Kimi 分析团队讨论…",
+    "loading_desc": "可能需要 10–30 秒",
+    "proposed_title": "建议变更",
+    "apply_btn": "应用所有变更",
+    "dismiss_btn": "忽略",
+    "admin_only": "仅限管理员",
+    "generated_success": "AI 洞察生成成功！"
+  }
+}

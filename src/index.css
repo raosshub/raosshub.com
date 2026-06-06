@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-base: #0d1117;
+    --bg-elevated: #161b22;
+    --bg-overlay: #1c2128;
+    --bg-input: #21262d;
+    --bg-hover: #262c33;
+    --bg-active: #2d333b;
+    --border: #30363d;
+    --border-subtle: #21262d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #484f58;
+    --accent: #3fb950;
+    --accent-dim: rgba(63,185,80,0.15);
+    --accent-text: #3fb950;
+    --blue: #58a6ff;
+    --red: #f85149;
+    --orange: #d29922;
+    --purple: #bc8cff;
+    --cyan: #56d3ba;
+    --sidebar-w: 260px;
+    --topbar-h: 56px;
+    --radius: 10px;
+    --radius-sm: 7px;
+    --radius-xs: 5px;
+  }
+
+  .light {
+    --bg-base: #f6f8fa;
+    --bg-elevated: #ffffff;
+    --bg-overlay: #f0f2f5;
+    --bg-input: #f6f8fa;
+    --bg-hover: #eaeef2;
+    --bg-active: #e1e7ed;
+    --border: #d0d7de;
+    --border-subtle: #e8ecf0;
+    --text-primary: #1f2328;
+    --text-secondary: #57606a;
+    --text-muted: #9198a1;
+    --accent: #1a7f37;
+    --accent-dim: rgba(26,127,55,0.1);
+    --accent-text: #1a7f37;
+    --blue: #0969da;
+    --red: #cf222e;
+    --orange: #9a6700;
+    --purple: #6e40c9;
+    --cyan: #1b7c83;
+  }
+
+  body {
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-primary);
+    background: var(--bg-base);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+}
+
+@layer components {
+  .hub-card {
+    @apply rounded-[var(--radius)] border p-5;
+    background: var(--bg-elevated);
+    border-color: var(--border);
+  }
+
+  .hub-btn {
+    @apply px-4 py-2 rounded-[var(--radius-sm)] font-medium transition-all duration-200;
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .hub-btn:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  .hub-input {
+    @apply w-full px-3 py-2 rounded-[var(--radius-xs)] border text-sm;
+    background: var(--bg-input);
+    border-color: var(--border);
+    color: var(--text-primary);
+  }
+
+  .hub-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-dim);
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2 rounded-[var(--radius-xs)] text-sm transition-all cursor-pointer;
+    color: var(--text-secondary);
+  }
+
+  .sidebar-link:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .sidebar-link.active {
+    background: var(--accent-dim);
+    color: var(--accent-text);
+  }
+
+  .rtl-badge {
+    background: rgba(210, 153, 34, 0.15);
+    color: var(--orange);
+  }
+}

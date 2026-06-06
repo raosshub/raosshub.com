@@ -1,0 +1,800 @@
+{
+  "meta": {
+    "title": "QR114i Salaam Stream Hub — RAOSS Hub",
+    "description": "AC792N Architecture — Project Dashboard"
+  },
+  "config": {
+    "projectName": "QR114i Salaam Stream",
+    "version": "1.0",
+    "logoPath": "assets/images/logo.png",
+    "faviconPath": "assets/images/favicon.ico",
+    "threeDPath": "assets/3D/qr114i.glb",
+    "timeline_quarters": [
+      "Q3 2026",
+      "Q4 2026",
+      "Q1 2027",
+      "Q2 2027",
+      "Q3 2027",
+      "Q4 2027"
+    ],
+    "chip": {
+      "name": "AC792N",
+      "fullName": "JeiLi AC792N (梧桐二代)",
+      "package": "AC7926A QFN",
+      "sdk": "JL_SDK"
+    },
+    "display": {
+      "size": "7\"",
+      "resolution": "1280×800",
+      "interface": "RGB888",
+      "fps": "30+",
+      "pixelClock": "~40MHz"
+    },
+    "battery": "22,000mAh",
+    "router": "Habolink AF007",
+    "teams": [
+      {
+        "id": "react",
+        "icon": "react",
+        "color": "#1e3a5f",
+        "text": "#58a6ff"
+      },
+      {
+        "id": "pcba",
+        "icon": "pcba",
+        "color": "#2d1b4e",
+        "text": "#bc8cff"
+      },
+      {
+        "id": "firmware",
+        "icon": "firmware",
+        "color": "#0d2818",
+        "text": "#3fb950"
+      },
+      {
+        "id": "tft",
+        "icon": "tft",
+        "color": "#3d2000",
+        "text": "#d29922"
+      },
+      {
+        "id": "router",
+        "icon": "router",
+        "color": "#0d2626",
+        "text": "#56d3ba"
+      },
+      {
+        "id": "charger",
+        "icon": "charger",
+        "color": "#3d0d0d",
+        "text": "#f85149"
+      },
+      {
+        "id": "shell",
+        "icon": "shell",
+        "color": "#1e1a14",
+        "text": "#8b949e"
+      }
+    ],
+    "auth": {
+      "users": [
+        {
+          "username": "admin@raoss.com",
+          "password": "125800**",
+          "name": "Super Admin",
+          "role": "superadmin",
+          "teams": [
+            "overview",
+            "react",
+            "pcba",
+            "firmware",
+            "tft",
+            "router",
+            "charger",
+            "shell"
+          ]
+        },
+        {
+          "username": "pcba@raoss.com",
+          "password": "Pc123456**",
+          "name": "PCBA Lead",
+          "role": "user",
+          "teams": [
+            "pcba"
+          ]
+        },
+        {
+          "username": "firmware@raoss.com",
+          "password": "Fw123456**",
+          "name": "Firmware Lead",
+          "role": "user",
+          "teams": [
+            "firmware",
+            "tft"
+          ]
+        },
+        {
+          "username": "react@raoss.com",
+          "password": "Rn123456**",
+          "name": "React Native Dev",
+          "role": "user",
+          "teams": [
+            "react"
+          ]
+        }
+      ]
+    }
+  },
+  "header": {
+    "brand_project_name": "QR114i Salaam Stream",
+    "brand_subtitle": "AC792N Architecture",
+    "brand_subtitle2": "Dashboard",
+    "badge_status": "In Development",
+    "lang_toggle": "中文",
+    "btn_logout": "Logout",
+    "btn_kimi": "AI Assistant",
+    "search_placeholder": "Search…"
+  },
+  "sidebar_footer": {
+    "version_line": "Document Version 1.0",
+    "update_line": "Last Updated: Q2 2026",
+    "reference_line": "This document is a living reference. All teams should check for updates before each sprint."
+  },
+  "login": {
+    "title": "Sign in",
+    "subtitle": "to continue to QR114i Salaam Stream Hub",
+    "label_email": "Email / Username",
+    "label_password": "Password",
+    "placeholder_email": "admin@raoss.com",
+    "placeholder_password": "Enter your password",
+    "remember_me": "Remember me",
+    "btn_signin": "Sign in",
+    "error_invalid": "Invalid email or password.",
+    "error_empty": "Please enter both email and password.",
+    "error_no_teams": "Your account has no team access assigned. Contact the Architecture Team lead.",
+    "footer_copyright": "© 2026 RAOSS HK COMPANY LIMITED"
+  },
+  "nda": {
+    "title": "Non-Disclosure Agreement",
+    "subtitle": "Confidentiality & Access Terms",
+    "body": [
+      "**Confidentiality**: All information contained in this dashboard is strictly confidential and proprietary to RAOSS HK COMPANY LIMITED.",
+      "**Purpose**: Access is granted solely for the purpose of contributing to the QR114i Salaam Stream Hub project.",
+      "**No Distribution**: You may not copy, screenshot, download, forward, or share any document, specification, or data contained herein.",
+      "**Return / Destruction**: Upon project completion or request, you agree to return or permanently delete all project materials.",
+      "**Breach**: Any breach may result in immediate revocation of access, legal action, and claims for damages.",
+      "**Acknowledgement**: By clicking \"I Agree\", you confirm that you have read, understood, and accept all terms above."
+    ],
+    "checkbox": "I have read and agree to the Non-Disclosure Agreement.",
+    "btn_agree": "I Agree",
+    "btn_decline": "Decline & Exit",
+    "alert_decline": "You must agree to the NDA to access this dashboard."
+  },
+  "kimi": {
+    "title": "AI Assistant (Kimi)",
+    "subtitle": "Admin-only JSON content editor",
+    "hint_title": "How to use:",
+    "hints": [
+      "Load the current EN or ZH JSON content into the editor",
+      "Edit directly or describe the changes you want",
+      "Click \"Transform with AI\" to apply the instruction",
+      "Review the result, then Download or Apply to preview"
+    ],
+    "api_notice": "POST /v1/messages → Kimi proxy → localhost:3001",
+    "btn_load_en": "Load EN JSON",
+    "btn_load_zh": "Load ZH JSON",
+    "btn_transform": "Transform with AI",
+    "btn_download": "Download JSON",
+    "btn_apply": "Apply to Preview",
+    "btn_close": "Close",
+    "btn_save_server": "Save to Server",
+    "btn_insights": "AI Insights",
+    "editor_placeholder": "Paste JSON content here, or click Load to fetch the active locale file…",
+    "transform_placeholder": "Describe what you want the AI to change (e.g., 'Update all Q3 2026 dates to Q4 2026')…"
+  },
+  "nav": {
+    "overview": "Overview",
+    "react": "Mobile APP",
+    "pcba": "PCBA",
+    "firmware": "Firmware",
+    "tft": "TFT Screen",
+    "router": "Router",
+    "charger": "Charger",
+    "shell": "Enclosure",
+    "settings": "Settings"
+  },
+  "team_tabs": {
+    "overview": "Scope",
+    "deliverables": "Deliverables",
+    "collaboration": "HUB Chat",
+    "files": "Files",
+    "pdf": "PDF Review",
+    "gallery": "Gallery"
+  },
+  "overview": {
+    "kpi_open_tasks": "Open Actions",
+    "kpi_milestones": "Milestones",
+    "kpi_teams": "Teams",
+    "kanban_no_milestones": "No items",
+    "timeline_title": "Project Timeline",
+    "action_table_priority": "Priority",
+    "action_table_task": "Task",
+    "action_table_owner": "Owner",
+    "action_table_due": "Due",
+    "action_table_status": "Tag"
+  },
+  "deliverables": {
+    "no_deliverables": "No deliverables listed."
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "current_language": "Current language",
+    "current_language_en": "English",
+    "current_language_zh": "中文",
+    "btn_english": "English",
+    "btn_chinese": "中文",
+    "nda": "Non-Disclosure Agreement",
+    "nda_status": "Status",
+    "nda_status_accepted": "Accepted",
+    "nda_status_not_accepted": "Not accepted",
+    "nda_view_button": "View NDA",
+    "theme": "Appearance",
+    "current_theme": "Current theme",
+    "current_theme_dark": "Dark",
+    "current_theme_light": "Light",
+    "switch_to_light": "Switch to Light Mode",
+    "switch_to_dark": "Switch to Dark Mode"
+  },
+  "collab": {
+    "files": {
+      "title": "Files",
+      "placeholder": "GET /api/teams/{teamId}/files",
+      "upload_btn": "Upload File",
+      "headers": [
+        "File Name",
+        "Size",
+        "Uploader",
+        "Date",
+        "Action"
+      ],
+      "empty_message": "No files uploaded yet. Connect to backend to enable file management.",
+      "btn_download": "Download"
+    }
+  },
+  "sections": {
+    "executive_summary": {
+      "title": "Executive Summary & Core Architecture",
+      "intro": "This project is built around the JeiLi AC792N (梧桐二代) Multimedia SoC — a unified solution that handles audio playback, display driving, WiFi/BLE, and power management in a single QFN package.",
+      "features": {
+        "audio": "Audio Playback (DAC / MP3)",
+        "display": "TFT Display Driver (RGB888 7\")",
+        "wifi": "WiFi 802.11b/g/n (NTP / API Sync)",
+        "ble": "Bluetooth 5.0 (Mobile App BLE)",
+        "touch": "Touch Key Processing (ADKEY)",
+        "pmu": "Power Management Unit (PMU)"
+      }
+    },
+    "timeline": {
+      "title": "Project Timeline & Milestones",
+      "items": [
+        {
+          "quarter": "Q3 2026",
+          "title": "Requirements & Datasheet Review",
+          "desc": "AC792N capabilities evaluated. Hardware design guide reviewed. Vendor samples secured.",
+          "tags": [
+            "PCBA",
+            "Firmware"
+          ],
+          "status": "current"
+        },
+        {
+          "quarter": "Q3 2026",
+          "title": "SDK Environment Setup",
+          "desc": "JeiLi IDE and JL_SDK configured. LVGL porting started.",
+          "tags": [
+            "Firmware",
+            "TFT Screen"
+          ],
+          "status": "pending"
+        },
+        {
+          "quarter": "Q4 2026",
+          "title": "PCB Layout & Prototype Build (EVT)",
+          "desc": "4-layer PCB with impedance control. First prototype assembly.",
+          "tags": [
+            "PCBA",
+            "Firmware",
+            "Enclosure"
+          ],
+          "status": "pending"
+        },
+        {
+          "quarter": "Q1 2027",
+          "title": "Firmware Integration & BLE Provisioning",
+          "desc": "FreeRTOS tasks: display driver, audio MP3 decoder, WiFi STA, BLE GATT server.",
+          "tags": [
+            "Firmware",
+            "Mobile APP"
+          ],
+          "status": "pending"
+        },
+        {
+          "quarter": "Q2 2027",
+          "title": "Design Validation Test (DVT)",
+          "desc": "Full feature validation. Co-existence interference testing.",
+          "tags": [
+            "All Teams"
+          ],
+          "status": "pending"
+        },
+        {
+          "quarter": "Q3 2027",
+          "title": "PVT & Certification",
+          "desc": "CE/FCC/IC certification. Qi wireless charging certification. 100-unit pilot run.",
+          "tags": [
+            "PCBA",
+            "Enclosure",
+            "Charger"
+          ],
+          "status": "pending"
+        },
+        {
+          "quarter": "Q4 2027",
+          "title": "Mass Production Ramp",
+          "desc": "Tooling finalized. 5K units/month target. OTA infrastructure live.",
+          "tags": [
+            "All Teams"
+          ],
+          "status": "pending"
+        }
+      ]
+    },
+    "interfaces": {
+      "title": "High-Level Communication Interfaces",
+      "headers": [
+        "Interface",
+        "Source",
+        "Destination",
+        "Protocol",
+        "Data Payload"
+      ],
+      "rows": [
+        [
+          "App ↔ Device",
+          "Phone",
+          "AC792N (BT)",
+          "BLE 5.0",
+          "Wi-Fi Creds, Location, Reciter Index"
+        ],
+        [
+          "Cloud ↔ Device",
+          "Backend",
+          "AC792N (WiFi)",
+          "HTTPS",
+          "JSON Prayer Timetable"
+        ],
+        [
+          "Device ↔ Router",
+          "AC792N",
+          "Habolink AF007",
+          "802.11b/g/n",
+          "Internet Access (TCP/IP)"
+        ],
+        [
+          "Audio Storage",
+          "AC792N",
+          "Micro SD",
+          "SDIO 4-bit",
+          "MP3 Files (15 Reciters)"
+        ],
+        [
+          "Display",
+          "AC792N",
+          "7\" TFT",
+          "RGB888",
+          "Pixel Data"
+        ]
+      ]
+    },
+    "risks": {
+      "title": "Risks & Mitigation",
+      "headers": [
+        "Risk",
+        "Mitigation"
+      ],
+      "rows": [
+        [
+          "1280×800 Display Bandwidth",
+          "Use 16-bit RGB565 if 24-bit bandwidth is insufficient at 40MHz pixel clock."
+        ],
+        [
+          "WiFi Interference with Audio",
+          "Separate analog ground. Follow datasheet Section 4.5 & 4.6 layout rules."
+        ],
+        [
+          "RF Range in Aluminum Frame",
+          "Plastic RF window in top 20mm of device shell — mandatory."
+        ],
+        [
+          "Crystal Drift (Timekeeping)",
+          "Use ±10ppm 24MHz and ±10ppm 32.768kHz crystals from approved vendors."
+        ]
+      ]
+    },
+    "responsibility": {
+      "title": "Team Responsibility Matrix",
+      "headers": [
+        "Team",
+        "Owner / Lead",
+        "Primary Scope"
+      ],
+      "rows": [
+        [
+          "Mobile APP & Backend",
+          "[To be assigned]",
+          "Mobile app (iOS/Android), BLE provisioning, prayer time API, OTA hosting"
+        ],
+        [
+          "PCBA",
+          "[To be assigned]",
+          "AC792N schematic, 4-layer PCB layout, power tree, audio routing"
+        ],
+        [
+          "Firmware",
+          "[To be assigned]",
+          "FreeRTOS app, LVGL UI, MP3 playback, WiFi/BLE stack, power management"
+        ],
+        [
+          "TFT Screen",
+          "[To be assigned]",
+          "Panel selection (1280×800 RGB888), touch controller (GT911), timing init"
+        ],
+        [
+          "Router (Habolink)",
+          "[To be assigned]",
+          "4G modem integration, antenna placement, co-existence testing"
+        ],
+        [
+          "Charger (Qi)",
+          "[To be assigned]",
+          "Wireless coil design, shielding, USB-C output, certification"
+        ],
+        [
+          "Enclosure",
+          "[To be assigned]",
+          "ABS + aluminum enclosure, RF window, antenna keep-out zone"
+        ]
+      ]
+    },
+    "actions": {
+      "title": "Open Action Items",
+      "items": [
+        {
+          "priority": "high",
+          "title": "Confirm 1280×800 panel supplier and validate AC792N RGB timing at 40MHz",
+          "owner": "TFT Screen Team",
+          "due": "Q3 2026",
+          "tag": "Hardware",
+          "tag_class": "feature"
+        },
+        {
+          "priority": "high",
+          "title": "Layout review: DCVDD14/WFVDD14 1.4V DCDC routing per Figure 4.5",
+          "owner": "PCBA Team",
+          "due": "Before EVT",
+          "tag": "Review",
+          "tag_class": "review"
+        },
+        {
+          "priority": "high",
+          "title": "Verify plastic RF window in top 20mm of shell (antenna keep-out zone)",
+          "owner": "Enclosure Team",
+          "due": "Q3 2026",
+          "tag": "Blocked on Antenna",
+          "tag_class": "blocked"
+        },
+        {
+          "priority": "medium",
+          "title": "Port LVGL v8.x to JL_SDK and validate 30 FPS on 1280×800",
+          "owner": "Firmware Team",
+          "due": "Q3 2026",
+          "tag": "Software",
+          "tag_class": "feature"
+        },
+        {
+          "priority": "medium",
+          "title": "Define BLE GATT service spec for Wi-Fi credential exchange",
+          "owner": "Mobile APP + Firmware",
+          "due": "Q3 2026",
+          "tag": "Spec",
+          "tag_class": "feature"
+        },
+        {
+          "priority": "medium",
+          "title": "Run co-existence test: 4G Tx vs AC792N WiFi Rx interference",
+          "owner": "Router Team",
+          "due": "DVT Phase",
+          "tag": "Test",
+          "tag_class": "review"
+        },
+        {
+          "priority": "low",
+          "title": "Source ±10ppm 24MHz and 32.768kHz crystals with approved vendor",
+          "owner": "PCBA Team",
+          "due": "EVT Build",
+          "tag": "Procurement",
+          "tag_class": "feature"
+        },
+        {
+          "priority": "low",
+          "title": "Qi coil mu-metal shielding validation vs AC792N DCDC inductor",
+          "owner": "Charger Team",
+          "due": "Q3 2027",
+          "tag": "Test",
+          "tag_class": "review"
+        }
+      ]
+    },
+    "version_history": {
+      "title": "Document Version History",
+      "headers": [
+        "Version",
+        "Date",
+        "Author",
+        "Changes"
+      ],
+      "rows": [
+        [
+          "1.0",
+          "2026-Q2",
+          "Architecture Team",
+          "Initial hardware spec based on AC792N unified SoC. Replaced dual-chip (ESP32-S3 + AC6966) with single-chip architecture."
+        ]
+      ]
+    },
+    "footer": {
+      "line1": "QR114i Salaam Stream Hub — Project Development Bible v1.0",
+      "line2": "This document is a living reference.",
+      "line3": "Last Updated: Q2 2026 — AC792N Architecture",
+      "copyright": "© 2026 RAOSS HK COMPANY LIMITED"
+    },
+    "team_react": {
+      "title": "Team: Mobile APP Development",
+      "subtitle": "Mobile Application (iOS/Android) & Cloud Sync Server",
+      "scope_title": "Scope of Work",
+      "scopes": [
+        {
+          "heading": "1. Mobile App Features",
+          "items": [
+            "BLE GATT client — scan for QR114i-Service and provision Wi-Fi credentials",
+            "Prayer time API integration — sync timetable to device over WiFi",
+            "Location services — auto-detect city for correct prayer times",
+            "Reciter selection — 15 reciters with preview playback",
+            "OTA trigger — initiate firmware updates from app"
+          ]
+        },
+        {
+          "heading": "2. Cloud Sync Server",
+          "items": [
+            "REST API endpoint: GET /api/prayer-times?city=&date=",
+            "Authentication: JWT-based device registration",
+            "OTA hosting: versioned .fw binaries with SHA256 checksum",
+            "Analytics: device heartbeat, error logs"
+          ]
+        }
+      ],
+      "deliverables_title": "Deliverables",
+      "deliverables": [
+        "iOS + Android app (React Native or Flutter)",
+        "BLE provisioning flow with error handling",
+        "Cloud API documentation",
+        "OTA update pipeline"
+      ],
+      "actions": [],
+      "actions_title": "Action Items"
+    },
+    "team_pcba": {
+      "title": "Team: PCBA Design",
+      "subtitle": "AC792N Schematic & 4-Layer PCB Layout",
+      "scope_title": "Scope of Work",
+      "scopes": [
+        {
+          "heading": "1. Power Tree",
+          "items": [
+            "AC792N requires: DVDD33 (3.3V), DVDD12 (1.2V), DCVDD14/WFVDD14 (1.4V DCDC — Figure 4.5)",
+            "Battery: 22,000mAh Li-Ion with fuel gauge IC",
+            "USB-C PD: Charging input + mobile device charging output",
+            "Qi wireless coil: Isolated from DCDC inductors (>30mm or mu-metal shield)"
+          ]
+        },
+        {
+          "heading": "2. Audio Routing",
+          "items": [
+            "AC792N DAC output → Class-D amplifier → Speaker",
+            "Analog ground plane isolation — no digital traces beneath analog section",
+            "Follow Section 4.5 & 4.6 of AC792N datasheet strictly"
+          ]
+        },
+        {
+          "heading": "3. Crystal & Clocks",
+          "items": [
+            "24MHz main crystal: ±10ppm tolerance (Section 2.2)",
+            "32.768kHz RTC crystal: ±10ppm tolerance for timekeeping",
+            "Placement: within 5mm of AC792N, minimise trace length"
+          ]
+        }
+      ],
+      "deliverables_title": "Deliverables",
+      "deliverables": [
+        "Schematic (KiCad / Altium) with BOM",
+        "4-layer PCB Gerber files with impedance control notes",
+        "Layout review report (DCDC, audio, RF zones)",
+        "EVT prototype (10 units)"
+      ],
+      "actions": [],
+      "actions_title": "Action Items"
+    },
+    "team_firmware": {
+      "title": "Team: Firmware Development",
+      "subtitle": "JeiLi AC792N — JL_SDK / FreeRTOS",
+      "scope_title": "Scope of Work",
+      "scopes": [
+        {
+          "heading": "1. Display & UI",
+          "items": [
+            "LVGL v8.x ported to JL_SDK — 30+ FPS target on 1280×800 RGB888",
+            "Prayer time UI: next prayer countdown, current time, reciter name",
+            "Settings screen: language, brightness, volume"
+          ]
+        },
+        {
+          "heading": "2. Azan & Audio Logic",
+          "items": [
+            "Timer: 32.768kHz RTC Crystal for ±2min/year accuracy",
+            "Wake-up: RTC alarm wakes AC792N from sleep mode",
+            "Playback: SD Card → DAC → amplifier. Directory: RECITER_01/azan.mp3"
+          ]
+        },
+        {
+          "heading": "3. WiFi & BLE Management",
+          "items": [
+            "WiFi STA Mode: Connect to home router for NTP and prayer time API sync",
+            "BLE Server: Advertise QR114i-Service for Mobile App configuration"
+          ]
+        },
+        {
+          "heading": "4. Power State Machine",
+          "items": [
+            "Monitor VBAT to detect USB-C power loss",
+            "Battery Mode: Reduce CPU clock to 80MHz. Disable EN_4G_PWR. Disable Wireless Charger"
+          ]
+        }
+      ],
+      "deliverables_title": "Deliverables",
+      "deliverables": [
+        ".fw Update Binary (USB Direct Upgrade via PC Tool)",
+        "RF Calibration Report: ±20ppm deviation on 24MHz XTAL"
+      ],
+      "actions": [],
+      "actions_title": "Action Items"
+    },
+    "team_tft": {
+      "title": "Team: TFT Screen",
+      "subtitle": "7\" Display & Touch Integration",
+      "scope_title": "Scope of Work",
+      "scopes": [
+        {
+          "heading": "1. Panel Selection",
+          "items": [
+            "Resolution: 1280×800 (RGB888) — validated on AC792N at 30+ FPS",
+            "Interface: 40-pin FPC (24-bit RGB, HSYNC, VSYNC, DE, CLK)",
+            "Timing: Pixel clock ~40MHz. Front porch 8, back porch 8, sync width 4"
+          ]
+        },
+        {
+          "heading": "2. Touch Panel",
+          "items": [
+            "Method: I2C Capacitive Touch Controller (e.g., GT911)",
+            "Connection: GPIOs configured as I2C in firmware",
+            "Interrupt line: active-low INT connected to AC792N GPIO"
+          ]
+        }
+      ],
+      "deliverables_title": "Deliverables",
+      "deliverables": [
+        "Panel Timing Initialization Code (Front Porch, Back Porch, Pixel Clock)",
+        "LVGL Display Driver for AC792N SDK",
+        "Touch calibration data"
+      ],
+      "actions": [],
+      "actions_title": "Action Items"
+    },
+    "team_router": {
+      "title": "Team: Built-In Router (Habolink AF007)",
+      "subtitle": "4G LTE Connectivity",
+      "scope_title": "Scope of Work",
+      "items": [
+        "Isolation: Router power rail (3.8V) is switched OFF by AC792N when VBUS is absent (Battery Mode)",
+        "Antenna: Keep router antenna >15mm away from AC792N's onboard PCB Antenna at all times",
+        "Integration: SIM Slot on bottom edge of ABS shell",
+        "Co-existence: Must pass 4G Tx vs AC792N WiFi Rx interference test at DVT phase"
+      ],
+      "deliverables_title": "Deliverables",
+      "deliverables": [
+        "Co-existence Interference Test Report (4G Tx vs AC792N WiFi Rx)"
+      ],
+      "actions": [],
+      "actions_title": "Action Items"
+    },
+    "team_charger": {
+      "title": "Team: Built-In Mobile Charger",
+      "subtitle": "Wireless Charging & USB-C Output",
+      "scope_title": "Scope of Work",
+      "items": [
+        "Qi Wireless Coil: Shielded with mu-metal to prevent interference with AC792N DCDC inductor",
+        "Physical separation: >30mm between Qi coil and DCDC inductors, or mu-metal shield required",
+        "USB-C Output: 5V/2A mobile device charging port on side of unit",
+        "Safety: Overvoltage and thermal protection"
+      ],
+      "deliverables_title": "Deliverables",
+      "deliverables": [
+        "Qi Wireless Charging Certification",
+        "Magnetic Interference Test Report (Qi coil vs DCDC Inductor)"
+      ],
+      "actions": [],
+      "actions_title": "Action Items"
+    },
+    "team_shell": {
+      "title": "Team: Enclosure",
+      "subtitle": "Mechanical Design — ABS + Aluminum",
+      "scope_title": "Scope of Work",
+      "antenna_note": {
+        "title": "PCB Antenna Keep-Out Zone (Critical — Datasheet Section 5)",
+        "body": "The top 20mm of the ABS Inner Shell MUST be completely plastic. No metal in the antenna keep-out zone."
+      },
+      "scopes": [
+        {
+          "heading": "RF Window Design (Critical)",
+          "items": [
+            "The AC792N has an onboard PCB Trace Antenna requiring a clear RF window",
+            "The 1.8mm Aluminum Frame acts as a Faraday Cage — blocks RF",
+            "Design Change: Top 20mm of ABS Inner Shell MUST be completely plastic",
+            "Clearance: 8-10mm No-Metal zone around the antenna trace (Figure 5.1)"
+          ]
+        },
+        {
+          "heading": "Mechanical Requirements",
+          "items": [
+            "Display: 7\" panel cutout with 40-pin FPC routing",
+            "SIM slot: accessible on bottom edge",
+            "USB-C ports: charging input + mobile output on side",
+            "Volume/power buttons: side-mounted tactile switches",
+            "Speaker grille: front-facing, minimum 10cm² open area"
+          ]
+        }
+      ],
+      "deliverables_title": "Deliverables",
+      "deliverables": [
+        "RF Window Design Verification (Plastic region in Aluminum frame)",
+        "Antenna Zone Mechanical Drawing (8-10mm clearance documented)",
+        "3D CAD files (.step) for PCBA fit-check"
+      ],
+      "actions": [],
+      "actions_title": "Action Items"
+    }
+  },
+  "ai_insights": {
+    "title": "AI Product Insights",
+    "subtitle": "Kimi-powered analysis of all team discussions",
+    "empty_title": "No AI insights yet",
+    "empty_desc": "Click \"AI Insights\" in the AI Assistant panel to analyse all team discussions.",
+    "loading_title": "Analysing team discussions with Kimi…",
+    "loading_desc": "This may take 10–30 seconds",
+    "proposed_title": "Proposed Changes",
+    "apply_btn": "Apply All Changes",
+    "dismiss_btn": "Dismiss",
+    "admin_only": "Admin Only",
+    "generated_success": "AI Insights generated successfully!"
+  }
+}
