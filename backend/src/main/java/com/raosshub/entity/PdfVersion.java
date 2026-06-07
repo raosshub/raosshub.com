@@ -7,6 +7,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.Map;
 
 @Entity
 @Table(name = "pdf_versions")
@@ -35,10 +36,9 @@ public class PdfVersion {
     @Column(name = "was_translated")
     private Boolean wasTranslated = false;
 
-    @Lob
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "current_sections", columnDefinition = "jsonb")
-    private Object currentSections;
+    @Column(columnDefinition = "jsonb")
+    private Map<String, Object> currentSections;
 
     @CreationTimestamp
     private Instant createdAt;

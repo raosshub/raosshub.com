@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useI18nStore } from '@/stores/useI18nStore';
 import { useThemeStore } from '@/stores/useThemeStore';
-import { useNotificationStore } from '@/stores/useNotificationStore';
 import { Icons } from '@/components/icons';
 import type { User } from '@/types';
 
@@ -10,7 +9,6 @@ const SettingsPage: React.FC = () => {
   const { t, currentLang, setLanguage } = useI18nStore();
   const { theme, toggleTheme } = useThemeStore();
   const { user } = useAuthStore();
-  const { addToast } = useNotificationStore();
 
   const u = user as User;
   const isSuperAdmin = u?.role === 'superadmin';

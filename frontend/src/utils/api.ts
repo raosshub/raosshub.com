@@ -117,6 +117,10 @@ export const fileApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   deletePdf: (docId: number) => api.delete(`/files/pdf/${docId}`),
+  upload: (file: FormData) =>
+    api.post('/files/upload', file, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 };
 
 // ─── Kimi Proxy ────────────────────────────────────────────────

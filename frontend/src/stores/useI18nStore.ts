@@ -97,7 +97,7 @@ export const useI18nStore = create<I18nState>((set, get) => ({
   },
 
   getTeamName: (teamId) => {
-    const { localeContent, currentLang } = get();
+    const { localeContent } = get();
     const nav = (localeContent as any)?.nav || {};
     return nav[teamId] || teamId;
   },

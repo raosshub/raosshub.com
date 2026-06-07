@@ -400,12 +400,27 @@ INSERT INTO users (username, email, password_hash, first_name, last_name, role, 
 VALUES (
     'admin',
     'admin@raoss.com',
-    '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYA.qGZvKG6G',
+    '$2b$12$BRs./aV7KbhMHY3P8gQdVeB/jkt9RKgjnm9RBGAz1VdPdCXgqGEli',
     'RAOSS',
     'Admin',
     'superadmin',
     ARRAY['all'],
     true,
+    true
+)
+ON CONFLICT (username) DO NOTHING;
+
+-- Seed default user (password: RaossUser2024!)
+INSERT INTO users (username, email, password_hash, first_name, last_name, role, teams, can_view_activity, is_active)
+VALUES (
+    'rizan',
+    'rizan@raoss.com',
+    '$2b$12$IPFc09d1paaQLGUvFGUkDuo6qBqacIFQKWW56spO88nHU3AtGegpO',
+    'Rizan',
+    'User',
+    'user',
+    ARRAY['all'],
+    false,
     true
 )
 ON CONFLICT (username) DO NOTHING;

@@ -91,7 +91,7 @@ const escapeHtml = (text: string): string => {
 // ─── Components ───────────────────────────────────────────────
 
 const HubAssistPage: React.FC = () => {
-  const { t } = useI18nStore();
+  const { t, currentLang } = useI18nStore();
   const { addToast } = useNotificationStore();
   const { user } = useAuthStore();
 
@@ -99,7 +99,7 @@ const HubAssistPage: React.FC = () => {
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen] = useState(true);
   const [sidebarView, setSidebarView] = useState<'sessions' | 'actions'>('sessions');
   const [showHelpModal, setShowHelpModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -270,31 +270,12 @@ const HubAssistPage: React.FC = () => {
     textareaRef.current?.focus();
   }, []);
 
-  const renameSession = useCallback((sessionId: string, newTitle: string) => {
-    setSessions((prev) =>
-      prev.map((s) => (s.id === sessionId ? { ...s, title: newTitle, updatedAt: Date.now() } : s))
-    );
-  }, []);
-
   const deleteSession = useCallback((sessionId: string) => {
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     if (currentSessionId === sessionId) {
       setCurrentSessionId('');
     }
   }, [currentSessionId]);
-
-  const duplicateSession = useCallback((sessionId: string) => {
-    const session = sessions.find((s) => s.id === sessionId);
-    if (!session) return;
-    const newSession: ChatSession = {
-      ...session,
-      id: generateId(),
-      title: `${session.title} (copy)`,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    setSessions((prev) => [newSession, ...prev]);
-  }, [sessions]);
 
   const clearAllSessions = useCallback(() => {
     if (window.confirm('Delete all sessions? This cannot be undone.')) {
@@ -311,13 +292,6 @@ const HubAssistPage: React.FC = () => {
       sendMessage();
     }
   }, [sendMessage]);
-
-  // ─── Auto-scope command detection ────────────────────────────
-  const isAutoScopeCommand = (text: string) => {
-    const lower = text.toLowerCase();
-    return lower.includes('scope') || lower.includes('sow') || lower.includes('deliverable') ||
-      lower.includes('milestone') || lower.includes('action item') || lower.includes('locale');
-  };
 
   // ─── Action button handlers ──────────────────────────────────
   const handleAction = (action: string) => {

@@ -1,16 +1,14 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useI18nStore } from '@/stores/useI18nStore';
-import { useAuthStore } from '@/stores/useAuthStore';
 import { useNotificationStore } from '@/stores/useNotificationStore';
-import { fileApi, i18nApi } from '@/utils/api';
+import { fileApi } from '@/utils/api';
 import { Icons } from '@/components/icons';
 import type { GalleryImage, TeamFile, PdfDocument } from '@/types';
 
 const TeamPage: React.FC = () => {
   const { teamId } = useParams<{ teamId: string }>();
   const { t, localeContent, currentLang, getTeamName } = useI18nStore();
-  const { user } = useAuthStore();
   const { addToast } = useNotificationStore();
 
   const [activeTab, setActiveTab] = useState('scope');
@@ -44,17 +42,6 @@ const TeamPage: React.FC = () => {
     // Load PDFs
     fileApi.getPdfDocuments(teamId).then((res) => setPdfs(res.data.data || [])).catch(() => {});
   }, [teamId, localeContent]);
-
-  // ─── Refresh data ────────────────────────────────────────────
-  const refreshLocale = useCallback(async () => {
-    if (!teamId) return;
-    try {
-      const res = await i18nApi.getLocaleSection(currentLang, `sections.${teamId}`);
-      setTeamData(res.data.data || {});
-    } catch (e) {
-      // Section may not exist yet
-    }
-  }, [teamId, currentLang]);
 
   // ─── Upload handlers ─────────────────────────────────────────
   const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -153,13 +140,6 @@ const TeamPage: React.FC = () => {
 
   const scope = teamData?.scope || {};
   const deliverables = teamData?.deliverables || [];
-
-  const priorityColor = (p: string) => {
-    const map: Record<string, string> = {
-      High: 'var(--red)', Medium: 'var(--orange)', Low: 'var(--blue)',
-    };
-    return map[p] || 'var(--text-muted)';
-  };
 
   const statusColor = (s: string) => {
     const map: Record<string, string> = {

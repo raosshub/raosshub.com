@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useAuthStore } from '@/stores/useAuthStore';
 import { useI18nStore } from '@/stores/useI18nStore';
 import { useNotificationStore } from '@/stores/useNotificationStore';
 import { configApi, userApi, teamApi } from '@/utils/api';
@@ -10,7 +9,6 @@ type ConfigTab = 'identity' | 'overview' | 'teams' | 'users' | 'system' | 'audit
 
 const ProjectConfigPage: React.FC = () => {
   const { t } = useI18nStore();
-  const { user, logout } = useAuthStore();
   const { addToast } = useNotificationStore();
 
   const [activeTab, setActiveTab] = useState<ConfigTab>('identity');
@@ -29,7 +27,6 @@ const ProjectConfigPage: React.FC = () => {
   }, []);
 
   const identity = config?.identity || {};
-  const branding = config?.branding || {};
   const api = config?.api || {};
 
   // ─── Save config ─────────────────────────────────────────────

@@ -1,7 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useI18nStore } from '@/stores/useI18nStore';
-import { Icons } from '@/components/icons';
 
 const NDAModal: React.FC = () => {
   const { t } = useI18nStore();

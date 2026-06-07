@@ -7,6 +7,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.Map;
 
 @Entity
 @Table(name = "locale_content", uniqueConstraints = {
@@ -24,10 +25,9 @@ public class LocaleContent {
     @Column(nullable = false, length = 200)
     private String sectionPath;
 
-    @Lob
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(nullable = false, columnDefinition = "jsonb")
-    private Object content;
+    private Map<String, Object> content;
 
     @UpdateTimestamp
     private Instant updatedAt;

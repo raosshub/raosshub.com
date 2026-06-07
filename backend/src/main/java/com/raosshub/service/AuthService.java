@@ -3,6 +3,7 @@ package com.raosshub.service;
 import com.raosshub.dto.*;
 import com.raosshub.entity.PasswordResetToken;
 import com.raosshub.entity.User;
+import com.raosshub.repository.NdaAgreementRepository;
 import com.raosshub.repository.PasswordResetTokenRepository;
 import com.raosshub.repository.UserRepository;
 import com.raosshub.security.JwtTokenProvider;
@@ -32,6 +33,7 @@ public class AuthService {
     private final JwtTokenProvider tokenProvider;
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository resetTokenRepository;
+    private final NdaAgreementRepository ndaAgreementRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogService auditLogService;
 
@@ -52,6 +54,10 @@ public class AuthService {
             User user = userRepository.findByUsername(userDetails.getUsername()).orElseThrow();
             user.setLastLogin(Instant.now());
             userRepository.save(user);
+
+            // Clear NDA acceptance — forces re-acceptance on every login
+            ndaAgreementRepository.findByUserId(user.getId())
+                .ifPresent(ndaAgreementRepository::delete);
 
             String accessToken = tokenProvider.generateAccessToken(authentication);
 

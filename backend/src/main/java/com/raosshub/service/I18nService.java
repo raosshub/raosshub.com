@@ -7,12 +7,13 @@ import com.raosshub.repository.LanguageRepository;
 import com.raosshub.repository.LocaleContentRepository;
 import com.raosshub.repository.UiMessageRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class I18nService {
@@ -37,7 +38,6 @@ public class I18nService {
         List<UiMessage> messages = uiMessageRepository.findByLanguageCode(languageCode);
         Map<String, String> result = new HashMap<>();
 
-        // If requested language has no messages, fall back to English
         if (messages.isEmpty() && !"en".equals(languageCode)) {
             messages = uiMessageRepository.findByLanguageCode("en");
         }
@@ -77,13 +77,25 @@ public class I18nService {
         return localeContentRepository.findByLanguageCodeAndSectionPath(languageCode, sectionPath);
     }
 
+    /**
+     * Returns the locale content as a parsed Java Map.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Map<String, Object>> getLocaleContentMap(String languageCode, String sectionPath) {
+        return getLocaleContent(languageCode, sectionPath)
+            .map(lc -> {
+                Map<String, Object> content = lc.getContent();
+                return content != null ? content : new HashMap<>();
+            });
+    }
+
     @Transactional
-    public void saveLocaleContent(String languageCode, String sectionPath, Object content, String updatedBy) {
+    public void saveLocaleContent(String languageCode, String sectionPath, Map<String, Object> content, String updatedBy) {
         LocaleContent lc = localeContentRepository.findByLanguageCodeAndSectionPath(languageCode, sectionPath)
             .orElse(new LocaleContent());
         lc.setLanguageCode(languageCode);
         lc.setSectionPath(sectionPath);
-        lc.setContent(content);
+        lc.setContent(content != null ? content : new HashMap<>());
         lc.setUpdatedBy(updatedBy);
         localeContentRepository.save(lc);
     }
@@ -94,7 +106,10 @@ public class I18nService {
         List<LocaleContent> contents = localeContentRepository.findByLanguageCode(languageCode);
 
         for (LocaleContent lc : contents) {
-            setNestedValue(result, lc.getSectionPath(), lc.getContent());
+            Map<String, Object> content = lc.getContent();
+            if (content != null) {
+                setNestedValue(result, lc.getSectionPath(), content);
+            }
         }
 
         return result;
@@ -105,7 +120,12 @@ public class I18nService {
         String[] parts = path.split("\\.");
         Map<String, Object> current = map;
         for (int i = 0; i < parts.length - 1; i++) {
-            current = (Map<String, Object>) current.computeIfAbsent(parts[i], k -> new LinkedHashMap<>());
+            Object next = current.get(parts[i]);
+            if (!(next instanceof Map)) {
+                next = new LinkedHashMap<>();
+                current.put(parts[i], next);
+            }
+            current = (Map<String, Object>) next;
         }
         current.put(parts[parts.length - 1], value);
     }

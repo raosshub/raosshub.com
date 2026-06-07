@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.io.InputStream;
 import java.time.Duration;
@@ -18,6 +20,7 @@ import java.util.UUID;
 public class S3Service {
 
     private final S3Client s3Client;
+    private final S3Presigner s3Presigner;
     private final AppProperties appProperties;
 
     public String uploadFile(String bucket, String key, InputStream inputStream, long contentLength, String contentType) {
@@ -68,8 +71,43 @@ public class S3Service {
         }
     }
 
+    /**
+     * Generates a real presigned URL for temporary access to a private S3 object.
+     */
     public String generatePresignedUrl(String bucket, String key, Duration expiration) {
-        return appProperties.getS3().getEndpoint() + "/" + bucket + "/" + key;
+        try {
+            GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                .signatureDuration(expiration)
+                .getObjectRequest(
+                    GetObjectRequest.builder()
+                        .bucket(bucket)
+                        .key(key)
+                        .build()
+                )
+                .build();
+
+            return s3Presigner.presignGetObject(presignRequest).url().toString();
+        } catch (Exception e) {
+            log.error("Failed to generate presigned URL for {}/{}: {}", bucket, key, e.getMessage());
+            // Fallback: return direct URL (may not work without public bucket)
+            return appProperties.getS3().getEndpoint() + "/" + bucket + "/" + key;
+        }
+    }
+
+    /**
+     * Returns the content type of an object, or null if not found.
+     */
+    public String getContentType(String bucket, String key) {
+        try {
+            HeadObjectRequest request = HeadObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .build();
+            return s3Client.headObject(request).contentType();
+        } catch (Exception e) {
+            log.warn("Failed to get content type for {}/{}: {}", bucket, key, e.getMessage());
+            return null;
+        }
     }
 
     public String generateKey(String prefix, String originalFilename) {

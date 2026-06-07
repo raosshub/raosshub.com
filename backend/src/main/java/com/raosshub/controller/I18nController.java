@@ -37,12 +37,11 @@ public class I18nController {
     }
 
     @GetMapping("/locales/{lang}/{sectionPath:.+}")
-    public ResponseEntity<ApiResponse<Object>> getLocaleSection(
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getLocaleSection(
             @PathVariable String lang,
             @PathVariable String sectionPath) {
-        return i18nService.getLocaleContent(lang, sectionPath)
-            .map(lc -> ResponseEntity.ok(ApiResponse.ok(lc.getContent())))
-            .orElse(ResponseEntity.ok(ApiResponse.ok(null)));
+        Map<String, Object> content = i18nService.getLocaleContentMap(lang, sectionPath).orElse(null);
+        return ResponseEntity.ok(ApiResponse.ok(content));
     }
 
     @PostMapping("/locales/{lang}")
@@ -51,7 +50,8 @@ public class I18nController {
             @PathVariable String lang,
             @RequestBody Map<String, Object> body) {
         String sectionPath = (String) body.get("sectionPath");
-        Object content = body.get("content");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> content = (Map<String, Object>) body.get("content");
         String updatedBy = (String) body.getOrDefault("updatedBy", "system");
         i18nService.saveLocaleContent(lang, sectionPath, content, updatedBy);
         return ResponseEntity.ok(ApiResponse.ok(null, "Locale content saved"));

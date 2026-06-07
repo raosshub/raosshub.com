@@ -2,14 +2,12 @@ import React, { useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useI18nStore } from '@/stores/useI18nStore';
 import { useThemeStore } from '@/stores/useThemeStore';
-import { useNotificationStore } from '@/stores/useNotificationStore';
 import { Icons } from '@/components/icons';
 
 const LoginScreen: React.FC = () => {
   const { t } = useI18nStore();
   const { login } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
-  const { addToast } = useNotificationStore();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

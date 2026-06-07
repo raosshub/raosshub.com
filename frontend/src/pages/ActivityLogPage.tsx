@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useI18nStore } from '@/stores/useI18nStore';
 import { auditApi } from '@/utils/api';
 import { Icons } from '@/components/icons';

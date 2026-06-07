@@ -11,9 +11,13 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.servlet.http.HttpServletRequest;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -166,9 +170,50 @@ public class FileController {
         return ResponseEntity.ok(ApiResponse.ok(null, "PDF removed"));
     }
 
+    // ─── Generic Upload (for admin/branding assets) ────────────────
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<String>> uploadGeneric(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "folder", defaultValue = "branding") String folder,
+            @AuthenticationPrincipal UserDetailsImpl user) throws Exception {
+
+        String key = s3Service.generateKey(folder, file.getOriginalFilename());
+        String bucket = s3Service.getBucketFiles();
+        s3Service.uploadFile(bucket, key, file.getInputStream(), file.getSize(), file.getContentType());
+
+        // Return backend proxy URL so images work regardless of MinIO network/CORS
+        String encodedKey = URLEncoder.encode(key, StandardCharsets.UTF_8);
+        String url = "/api/files/serve/" + bucket + "?key=" + encodedKey;
+
+        auditLogService.log(user.getUsername(), "upload", "branding", null,
+            file.getOriginalFilename(), folder);
+        return ResponseEntity.ok(ApiResponse.ok(url));
+    }
+
     // ─── Chat Summaries ────────────────────────────────────────────
     @GetMapping("/{teamId}/summaries")
     public ResponseEntity<ApiResponse<?>> getSummaries(@PathVariable String teamId) {
         return ResponseEntity.ok(ApiResponse.ok(Map.of("teamId", teamId, "message", "Use chat summary endpoints")));
+    }
+
+    // ─── Public File Serve (for images, models, favicons, logos) ───
+    @GetMapping("/serve/{bucket}")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<byte[]> serveFile(
+            @PathVariable String bucket,
+            @RequestParam("key") String key) {
+
+        byte[] data = s3Service.downloadFile(bucket, key);
+        String contentType = s3Service.getContentType(bucket, key);
+
+        HttpHeaders headers = new HttpHeaders();
+        if (contentType != null) {
+            headers.setContentType(MediaType.parseMediaType(contentType));
+        }
+        headers.setCacheControl("public, max-age=3600");
+
+        return ResponseEntity.ok()
+            .headers(headers)
+            .body(data);
     }
 }

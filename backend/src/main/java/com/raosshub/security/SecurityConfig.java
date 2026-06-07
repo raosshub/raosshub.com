@@ -17,6 +17,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -24,6 +25,12 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Single security filter chain. Public paths use permitAll().
+ * No web.ignoring() — all requests go through the filter chain.
+ * JWT filter authenticates token-bearing requests.
+ * @PreAuthorize on controllers handles role-based access.
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -41,12 +48,28 @@ public class SecurityConfig {
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/health").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/languages").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/ui-strings/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/locales/**").permitAll()
+                // CORS preflight
+                .requestMatchers(new AntPathRequestMatcher("/**", HttpMethod.OPTIONS.name())).permitAll()
+                // Public auth endpoints
+                .requestMatchers(
+                    new AntPathRequestMatcher("/api/auth/login"),
+                    new AntPathRequestMatcher("/api/auth/refresh"),
+                    new AntPathRequestMatcher("/api/auth/forgot-password"),
+                    new AntPathRequestMatcher("/api/auth/reset-password")
+                ).permitAll()
+                // Health
+                .requestMatchers(new AntPathRequestMatcher("/api/health")).permitAll()
+                // Public file serve (images, models, logos, favicons)
+                .requestMatchers(new AntPathRequestMatcher("/api/files/serve/**")).permitAll()
+                // I18n / locale (read-only public)
+                .requestMatchers(new AntPathRequestMatcher("/api/languages")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/languages/**")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/ui-strings")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/ui-strings/**")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/locales/**")).permitAll()
+                // Error page
+                .requestMatchers(new AntPathRequestMatcher("/error")).permitAll()
+                // Everything else needs authentication
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())
@@ -59,12 +82,14 @@ public class SecurityConfig {
     public CorsConfigurationSource securityCorsSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        // Allow all localhost origins for development
+        // Localhost origins for development
         config.setAllowedOrigins(Arrays.asList(
             "http://localhost:3000",
+            "http://localhost:5173",
             "http://localhost",
             "http://localhost:80",
             "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
             "http://127.0.0.1"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));

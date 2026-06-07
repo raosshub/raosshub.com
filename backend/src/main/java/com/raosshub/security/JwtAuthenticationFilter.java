@@ -16,6 +16,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+/**
+ * JWT authentication filter. Processes Bearer tokens on incoming requests.
+ * shouldNotFilter() must EXACTLY MATCH the permitAll() paths in SecurityConfig.
+ * This ensures public endpoints skip JWT processing, while all others
+ * (including /api/auth/me, /api/auth/nda) get authenticated.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -26,8 +32,31 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        // Skip CORS preflight requests
-        return "OPTIONS".equalsIgnoreCase(request.getMethod());
+        String path = request.getRequestURI();
+        String method = request.getMethod();
+
+        // CORS preflight — never filter
+        if ("OPTIONS".equalsIgnoreCase(method)) return true;
+
+        // Public auth endpoints — no JWT needed
+        if (path.equals("/api/auth/login")) return true;
+        if (path.equals("/api/auth/refresh")) return true;
+        if (path.equals("/api/auth/forgot-password")) return true;
+        if (path.equals("/api/auth/reset-password")) return true;
+
+        // Health check
+        if (path.equals("/api/health")) return true;
+
+        // I18n / locale (read-only public)
+        if (path.startsWith("/api/languages")) return true;
+        if (path.startsWith("/api/ui-strings")) return true;
+        if (path.startsWith("/api/locales")) return true;
+
+        // Public file serve (images, models, logos, favicons)
+        if (path.startsWith("/api/files/serve")) return true;
+
+        // All other paths go through JWT filter
+        return false;
     }
 
     @Override
