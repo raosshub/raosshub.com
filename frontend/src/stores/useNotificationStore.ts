@@ -1,0 +1,45 @@
+import { create } from 'zustand';
+import type { Toast } from '@/types';
+
+interface NotificationState {
+  toasts: Toast[];
+  notifications: Array<{
+    id: string;
+    msg: string;
+    msg_zh?: string;
+    type: string;
+    title: string;
+    title_zh?: string;
+    ts: string;
+    read: boolean;
+  }>;
+  addToast: (message: string, type?: Toast['type'], title?: string) => void;
+  removeToast: (id: string) => void;
+  addNotification: (msg: string, type: string, title?: string, msgZh?: string, titleZh?: string) => void;
+}
+
+export const useNotificationStore = create<NotificationState>((set) => ({
+  toasts: [],
+  notifications: [],
+
+  addToast: (message, type = 'info', title = '') => {
+    const id = `toast_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    set((s) => ({ toasts: [...s.toasts, { id, message, type, title }] }));
+    // Auto-remove after 4s
+    setTimeout(() => {
+      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+    }, 4000);
+  },
+
+  removeToast: (id) => {
+    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+  },
+
+  addNotification: (msg, type, title = '', msgZh, titleZh) => {
+    const id = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    set((s) => ({
+      notifications: [{ id, msg, msg_zh: msgZh, type, title, title_zh: titleZh, ts, read: false }, ...s.notifications].slice(0, 20),
+    }));
+  },
+}));

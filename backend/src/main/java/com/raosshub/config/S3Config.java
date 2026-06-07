@@ -1,0 +1,34 @@
+package com.raosshub.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
+
+import java.net.URI;
+
+@Configuration
+public class S3Config {
+
+    @Bean
+    public S3Client s3Client(AppProperties props) {
+        S3Configuration s3Config = S3Configuration.builder()
+                .pathStyleAccessEnabled(props.getS3().isPathStyleAccess())
+                .build();
+
+        return S3Client.builder()
+                .endpointOverride(URI.create(props.getS3().getEndpoint()))
+                .region(Region.of(props.getS3().getRegion()))
+                .credentialsProvider(StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(
+                                props.getS3().getAccessKey(),
+                                props.getS3().getSecretKey()
+                        )
+                ))
+                .serviceConfiguration(s3Config)
+                .build();
+    }
+}

@@ -1,0 +1,46 @@
+# ---- Backend (Spring Boot / Maven) ----
+backend/target/
+backend/!.mvn/wrapper/mvn-wrapper.jar
+backend/!**/src/main/**/target/
+backend/!**/src/test/**/target/
+backend/*.class
+backend/*.jar
+backend/*.war
+
+# ---- Frontend (Node / Vite) ----
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+frontend/.vite/
+
+# ---- Environment ----
+.env
+.env.local
+.env.*.local
+
+# ---- IDEs ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+*~
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- Logs ----
+*.log
+logs/
+
+# ---- Docker ----
+postgres_data/
+minio_data/
+
+# ---- Misc ----
+*.tmp
+*.temp

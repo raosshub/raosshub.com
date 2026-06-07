@@ -1,0 +1,58 @@
+version: "3.8"
+
+# ═══════════════════════════════════════════════════════════════
+# RAOSS Hub v3 — Development Mode
+# Only infrastructure runs in Docker.
+# Backend and frontend run on your Windows host for hot-reload.
+#
+# Step 1:  docker compose -f docker-compose.dev.yml up -d
+# Step 2:  cd backend  && mvn spring-boot:run
+# Step 3:  cd frontend && npm run dev
+# Step 4:  Open http://localhost:3000
+#
+# NOTE: This mode can fail on Windows Docker Desktop due to
+# WSL2 port-forwarding bugs. If you get password auth errors,
+# switch to full Docker mode:  docker compose up --build
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: raoss-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: raosshub
+      POSTGRES_USER: raoss
+      POSTGRES_PASSWORD: raoss_dev_2024
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U raoss -d raosshub" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: raoss-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: raossminio
+      MINIO_ROOT_PASSWORD: raossminio2024
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_dev_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_dev_data:
+  minio_dev_data:

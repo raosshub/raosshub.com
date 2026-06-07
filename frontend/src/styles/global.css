@@ -1,0 +1,208 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,300&family=DM+Mono:wght@400;500&display=swap');
+
+/* ═══════════════════════════════════════════════════════════════
+   RAOSS Hub v3 — Global Styles
+   Dark theme tokens + Light theme + Reset
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --sidebar-w: 248px;
+  --topbar-h: 56px;
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-xs: 5px;
+  --transition: 0.2s ease;
+
+  --bg-base:       #0d1117;
+  --bg-elevated:   #161b22;
+  --bg-overlay:    #1c2128;
+  --bg-input:      #21262d;
+  --bg-hover:      #262c33;
+  --bg-active:     #2d333b;
+
+  --border:        #30363d;
+  --border-subtle: #21262d;
+  --border-focus:  #58a6ff;
+
+  --text-primary:   #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted:     #407755;
+  --text-inverse:   #0d1117;
+
+  --accent:         #3fb950;
+  --accent-dim:     rgba(63,185,80,0.15);
+  --accent-text:    #3fb950;
+
+  --blue:          #58a6ff;
+  --blue-dim:      rgba(88,166,255,0.15);
+  --orange:        #d29922;
+  --orange-dim:    rgba(210,153,34,0.15);
+  --red:           #f85149;
+  --red-dim:       rgba(248,81,73,0.15);
+  --purple:        #bc8cff;
+  --purple-dim:    rgba(188,140,255,0.15);
+  --teal:          #39d353;
+  --cyan:          #56d3ba;
+  --cyan-dim:      rgba(86,211,186,0.12);
+
+  --super-admin:   #f0b429;
+  --super-dim:     rgba(240,180,41,0.12);
+
+  --p0: #f85149;
+  --p1: #d29922;
+  --p2: #58a6ff;
+  --p3: #3fb950;
+
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md:  0 4px 16px rgba(0,0,0,0.5);
+  --shadow-lg:  0 8px 32px rgba(0,0,0,0.6);
+
+  --sidebar-bg:      #161b22;
+  --sidebar-border:  #30363d;
+  --topbar-bg:       rgba(13,17,23,0.85);
+}
+
+body.light-mode {
+  --bg-base:       #f6f8fa;
+  --bg-elevated:   #ffffff;
+  --bg-overlay:    #f0f2f5;
+  --bg-input:      #f6f8fa;
+  --bg-hover:      #eaeef2;
+  --bg-active:     #e1e7ed;
+
+  --border:        #d0d7de;
+  --border-subtle: #e8ecf0;
+  --border-focus:  #0969da;
+
+  --text-primary:   #1f2328;
+  --text-secondary: #57606a;
+  --text-muted:     #9198a1;
+  --text-inverse:   #ffffff;
+
+  --accent:         #1a7f37;
+  --accent-dim:     rgba(26,127,55,0.1);
+  --accent-text:    #1a7f37;
+
+  --blue:          #0969da;
+  --blue-dim:      rgba(9,105,218,0.1);
+  --orange:        #9a6700;
+  --orange-dim:    rgba(154,103,0,0.1);
+  --red:           #cf222e;
+  --red-dim:       rgba(207,34,46,0.1);
+  --purple:        #6e40c9;
+  --purple-dim:    rgba(110,64,201,0.1);
+  --cyan:          #1b7c83;
+  --cyan-dim:      rgba(27,124,131,0.1);
+
+  --super-admin:   #9a6700;
+  --super-dim:     rgba(154,103,0,0.1);
+
+  --p0: #cf222e;
+  --p1: #9a6700;
+  --p2: #0969da;
+  --p3: #1a7f37;
+
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md:  0 4px 16px rgba(0,0,0,0.12);
+  --shadow-lg:  0 8px 32px rgba(0,0,0,0.16);
+
+  --sidebar-bg:      #ffffff;
+  --sidebar-border:  #d0d7de;
+  --topbar-bg:       rgba(246,248,250,0.92);
+}
+
+/* ─── Reset ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+a, button, input, textarea, select { font-family: inherit; color: inherit; }
+button { cursor: pointer; border: none; background: none; }
+input, textarea { outline: none; background: none; border: none; }
+
+/* ─── Scrollbars ─── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ─── RTL text rendering with LTR layout ─── */
+[dir="rtl"] body {
+  font-family: 'DM Sans', 'Noto Sans Arabic', 'Noto Sans Urdu', -apple-system, sans-serif;
+}
+
+@keyframes loadShimmer {
+  0%   { left: -45%; }
+  100% { left: 110%; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(1.3); }
+}
+
+@keyframes fadeDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── RTL Text Rendering (Layout stays LTR) ────────────────────
+   For Arabic, Urdu, Hebrew: text-align right, but layout
+   (sidebar position, margins, flex direction) stays LTR.
+   ═══════════════════════════════════════════════════════════ */
+
+[dir="rtl"] body {
+  text-align: right;
+}
+
+[dir="rtl"] p,
+[dir="rtl"] h1,
+[dir="rtl"] h2,
+[dir="rtl"] h3,
+[dir="rtl"] h4,
+[dir="rtl"] li,
+[dir="rtl"] td,
+[dir="rtl"] th {
+  text-align: right;
+}
+
+[dir="rtl"] input,
+[dir="rtl"] textarea,
+[dir="rtl"] select {
+  text-align: right;
+}
+
+/* Code blocks and technical content stay LTR */
+[dir="rtl"] pre,
+[dir="rtl"] code {
+  direction: ltr;
+  text-align: left;
+}
+
+/* Tables: data cells align right, but table structure unchanged */
+[dir="rtl"] table td,
+[dir="rtl"] table th {
+  text-align: right;
+}

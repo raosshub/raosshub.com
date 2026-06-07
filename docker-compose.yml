@@ -1,0 +1,90 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: raoss-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: raosshub
+      POSTGRES_USER: raoss
+      POSTGRES_PASSWORD: raoss_dev_2024
+    ports:
+      - "5432:5432"
+    # No named volume — data stored in container.
+    # Container removal = clean database. Prevents Windows/WSL2 volume caching issues.
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U raoss -d raosshub" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: raoss-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: raossminio
+      MINIO_ROOT_PASSWORD: raossminio2024
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Run these after containers are up:
+  # docker compose exec minio mc alias set local http://localhost:9000 raossminio raossminio2024
+  # docker compose exec minio mc mb local/raosshub-files --ignore-existing
+  # docker compose exec minio mc mb local/raosshub-gallery --ignore-existing
+  # docker compose exec minio mc mb local/raosshub-pdfs --ignore-existing
+
+  nginx:
+    image: nginx:alpine
+    container_name: raoss-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    container_name: raoss-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/raosshub
+      SPRING_DATASOURCE_USERNAME: raoss
+      SPRING_DATASOURCE_PASSWORD: raoss_dev_2024
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      APP_JWT_SECRET: ${JWT_SECRET:-raosshub-jwt-secret-key-change-in-production-2024}
+      APP_JWT_EXPIRATION_MS: 900000
+      APP_JWT_REFRESH_EXPIRATION_MS: 604800000
+      APP_S3_ENDPOINT: http://minio:9000
+      APP_S3_ACCESS_KEY: raossminio
+      APP_S3_SECRET_KEY: raossminio2024
+      APP_S3_BUCKET_FILES: raosshub-files
+      APP_S3_BUCKET_GALLERY: raosshub-gallery
+      APP_S3_BUCKET_PDFS: raosshub-pdfs
+      APP_KIMI_API_KEY: ${KIMI_API_KEY:-}
+      APP_CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:80
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  # React dev server runs on host, not in Docker
+  # cd frontend && npm run dev
+
+volumes:
+  minio_data:

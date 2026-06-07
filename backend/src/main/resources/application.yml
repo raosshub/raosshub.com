@@ -1,0 +1,75 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: raosshub-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/raosshub
+    username: raoss
+    password: raoss_dev_2024
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    defer-datasource-initialization: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          lob:
+            non_contextual_creation: true
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      continue-on-error: true
+
+  mail:
+    host: localhost
+    port: 587
+    username: 
+    password: 
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+app:
+  jwt:
+    secret: raosshub-jwt-secret-key-change-in-production-2024
+    expiration-ms: 900000
+    refresh-expiration-ms: 604800000
+
+  s3:
+    endpoint: http://localhost:9000
+    access-key: raossminio
+    secret-key: raossminio2024
+    bucket-files: raosshub-files
+    bucket-gallery: raosshub-gallery
+    bucket-pdfs: raosshub-pdfs
+    region: us-east-1
+    path-style-access: true
+
+  kimi:
+    api-key: 
+    base-url: https://api.moonshot.cn/v1
+
+  cors:
+    allowed-origins: http://localhost:3000,http://localhost,http://localhost:80
+
+logging:
+  level:
+    com.raosshub: INFO
+    org.springframework.security: WARN
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
