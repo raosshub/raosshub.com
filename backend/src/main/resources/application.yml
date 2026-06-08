@@ -55,7 +55,7 @@ app:
     secret: ${APP_JWT_SECRET:raosshub-jwt-secret-key-change-in-production-2024}
     expiration-ms: ${APP_JWT_EXPIRATION_MS:900000}
     refresh-expiration-ms: ${APP_JWT_REFRESH_EXPIRATION_MS:604800000}
-    # false for local HTTP dev, true for production HTTPS (set via APP_JWT_COOKIE_SECURE=true)
+    # false for local HTTP dev, true for production HTTPS (set APP_JWT_COOKIE_SECURE=true)
     cookie-secure: ${APP_JWT_COOKIE_SECURE:false}
 
   s3:
@@ -71,8 +71,12 @@ app:
   kimi:
     api-key: ${APP_KIMI_API_KEY:}
     base-url: https://api.moonshot.cn/v1
+    # Max Kimi requests per user per minute. Prevents cost runaway and Moonshot API 429s.
+    # Default 10 covers normal conversational use. Override via APP_KIMI_RATE_LIMIT.
+    rate-limit-per-minute: ${APP_KIMI_RATE_LIMIT:10}
 
   cors:
+    # Comma-separated. Override via APP_CORS_ALLOWED_ORIGINS in production.
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost,http://localhost:80}
 
 logging:

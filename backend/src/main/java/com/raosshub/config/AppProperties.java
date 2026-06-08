@@ -18,8 +18,8 @@ public class AppProperties {
         private long expirationMs = 900000;            // 15 min — access token
         private long refreshExpirationMs = 604800000;  // 7 days — refresh token
         /**
-         * Set false for local dev (HTTP localhost).
-         * Set true in production via APP_JWT_COOKIE_SECURE=true env var (requires HTTPS).
+         * false for local dev (HTTP localhost).
+         * true in production via APP_JWT_COOKIE_SECURE=true env var (requires HTTPS).
          */
         private boolean cookieSecure = false;
     }
@@ -40,10 +40,21 @@ public class AppProperties {
     public static class Kimi {
         private String apiKey;
         private String baseUrl = "https://api.moonshot.cn/v1";
+        /**
+         * Max requests per user per minute on /api/kimi.
+         * Protects against runaway AI costs and Moonshot API rate limit violations.
+         * Override via APP_KIMI_RATE_LIMIT env var in production.
+         */
+        private int rateLimitPerMinute = 10;
     }
 
     @Data
     public static class Cors {
+        /**
+         * Comma-separated list of allowed origins.
+         * Read by SecurityConfig — not hardcoded there.
+         * Override via APP_CORS_ALLOWED_ORIGINS env var in production.
+         */
         private String allowedOrigins = "http://localhost:3000";
     }
 }

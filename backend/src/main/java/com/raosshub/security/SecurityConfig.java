@@ -1,5 +1,6 @@
 package com.raosshub.security;
 
+import com.raosshub.config.AppProperties;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -26,20 +27,19 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Single security filter chain.
  *
- * Public paths: login, refresh, forgot/reset-password, health, file serve,
- * languages, ui-strings.
+ * CORS origins are read from app.cors.allowed-origins in application.yml.
+ * Override via APP_CORS_ALLOWED_ORIGINS env var in production — no code change needed.
  *
- * /api/locales/** is intentionally NOT in permitAll — locale content is
- * confidential project data. Only /api/ui-strings stays public (login screen
- * translated labels).
+ * /api/locales/** requires authentication — locale content is confidential project
+ * data protected by NDA. Only /api/ui-strings stays public (login screen labels).
  *
- * AuthenticationEntryPoint returns 401 (not Spring's default 403) so the
- * Axios 401 interceptor on the frontend can trigger silent token refresh
- * correctly when access tokens expire.
+ * AuthenticationEntryPoint returns 401 (not Spring's default 403) so the Axios 401
+ * interceptor can trigger silent token refresh correctly when access tokens expire.
  */
 @Configuration
 @EnableWebSecurity
@@ -49,6 +49,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final UserDetailsServiceImpl userDetailsService;
+    private final AppProperties appProperties;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -88,7 +89,7 @@ public class SecurityConfig {
                 .requestMatchers(new AntPathRequestMatcher("/api/languages/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/ui-strings")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/ui-strings/**")).permitAll()
-                // NOTE: /api/locales/** is intentionally NOT listed here.
+                // NOTE: /api/locales/** is intentionally NOT listed here — requires auth.
                 // Error page
                 .requestMatchers(new AntPathRequestMatcher("/error")).permitAll()
                 // Everything else requires a valid access token
@@ -104,11 +105,16 @@ public class SecurityConfig {
     public CorsConfigurationSource securityCorsSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        config.setAllowedOrigins(Arrays.asList(
-            "http://localhost:3000",
-            "http://localhost",
-            "http://localhost:80"
-        ));
+        // Read from app.cors.allowed-origins — comma-separated string.
+        // Set via APP_CORS_ALLOWED_ORIGINS env var in production.
+        List<String> origins = Arrays.stream(
+                appProperties.getCors().getAllowedOrigins().split(",")
+            )
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .collect(Collectors.toList());
+
+        config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
