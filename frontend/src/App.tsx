@@ -19,95 +19,118 @@ import ProjectConfigPage from '@/pages/ProjectConfigPage';
 import AdminSetupPage from '@/pages/admin/AdminSetupPage';
 
 function App() {
-  const { isAuthenticated, fetchMe, ndaAccepted, checkNda, logout } = useAuthStore();
-  const { loadLanguages, loadUiStrings, loadLocale } = useI18nStore();
-  const { applyTheme } = useThemeStore();
-  const [initStage, setInitStage] = useState<'loading' | 'login' | 'nda' | 'app'>('loading');
-  const [loadingText, setLoadingText] = useState('Initialising...');
-  const [, setBackendOnline] = useState(false);
+  const {
+    isAuthenticated,
+    silentRefresh,
+    fetchMe,
+    ndaAccepted,
+    checkNda,
+    logout,
+  } = useAuthStore();
 
-  // ─── Initialisation ──────────────────────────────────────────
+  const { loadLanguages, loadUiStrings, loadLocale, currentLang } = useI18nStore();
+  const { applyTheme } = useThemeStore();
+
+  const [initStage, setInitStage] = useState<'loading' | 'login' | 'app'>('loading');
+  const [loadingText, setLoadingText] = useState('Initialising...');
+
+  // ─── Listen for forced logout from the Axios 401 interceptor ─────────────
+  // Fires when the refresh cookie is expired or invalid and the interceptor
+  // cannot recover. Transitions to login without a hard page reload.
+  useEffect(() => {
+    const handleForceLogout = () => {
+      logout();
+      setInitStage('login');
+    };
+    window.addEventListener('auth:logout', handleForceLogout);
+    return () => window.removeEventListener('auth:logout', handleForceLogout);
+  }, [logout]);
+
+  // ─── Initialisation ──────────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
       applyTheme();
 
-      // Check backend
+      // 1. Backend health check (non-blocking — app still works without it)
       setLoadingText('Checking backend...');
-      try {
-        await healthApi.check();
-        setBackendOnline(true);
-      } catch {
-        setBackendOnline(false);
-      }
+      try { await healthApi.check(); } catch { /* continue */ }
 
-      // Load languages
+      // 2. Load languages and UI strings — these are public endpoints.
+      //    UI strings are needed by the login screen to render translated labels.
+      //    Locale content (/api/locales/**) is authenticated — loaded after auth below.
       setLoadingText('Loading languages...');
       await loadLanguages();
       await loadUiStrings('en');
-      await loadLocale('en');
 
-      // Check auth
+      // 3. Attempt silent re-authentication via the httpOnly refresh cookie.
+      //    If the user has a valid session from a previous login, this restores
+      //    the access token in memory without showing the login screen.
       setLoadingText('Checking credentials...');
-      const token = localStorage.getItem('hub_token');
-      if (token) {
-        try {
-          await fetchMe();
-        } catch {
-          logout();
-        }
-      }
+      const refreshed = await silentRefresh();
 
-      setLoadingText('Ready');
-      setTimeout(() => {
-        if (useAuthStore.getState().isAuthenticated) {
+      if (refreshed) {
+        // 4a. Cookie was valid — fetch the current user profile.
+        await fetchMe();
+
+        // 4b. Load locale content now that we are authenticated.
+        //     This is safe to call here because the access token is in memory.
+        await loadLocale(currentLang || 'en');
+
+        setLoadingText('Ready');
+        setTimeout(() => {
           setInitStage('app');
           checkNda();
-        } else {
-          setInitStage('login');
-        }
-      }, 400);
+        }, 400);
+      } else {
+        // 4b. No valid cookie — show login.
+        setLoadingText('Ready');
+        setTimeout(() => setInitStage('login'), 400);
+      }
     };
 
     init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── Watch auth state changes ────────────────────────────────
+  // ─── React to auth state changes after init ───────────────────────────────
+  // Handles the case where the user logs in via the LoginScreen (setInitStage
+  // moves from 'login' → 'app') or gets logged out (any stage → 'login').
   useEffect(() => {
     if (isAuthenticated && initStage === 'login') {
-      checkNda().then(() => {
-        setInitStage('app');
+      // User just logged in — load locale content now
+      loadLocale(currentLang || 'en').then(() => {
+        checkNda().then(() => setInitStage('app'));
       });
     }
     if (!isAuthenticated && initStage === 'app') {
       setInitStage('login');
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Loading screen ──────────────────────────────────────────
+  // ─── Render stages ───────────────────────────────────────────────────────
+
   if (initStage === 'loading') {
     return <LoadingScreen text={loadingText} />;
   }
 
-  // ─── Login screen ────────────────────────────────────────────
   if (initStage === 'login') {
     return <LoginScreen />;
   }
 
-  // ─── App with NDA check ──────────────────────────────────────
   return (
     <>
       <ToastContainer />
       {!ndaAccepted && isAuthenticated && <NDAModal />}
       <AppLayout>
         <Routes>
-          <Route path="/" element={<OverviewPage />} />
-          <Route path="/team/:teamId" element={<TeamPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/assistant" element={<HubAssistPage />} />
-          <Route path="/activity-log" element={<ActivityLogPage />} />
+          <Route path="/"              element={<OverviewPage />} />
+          <Route path="/team/:teamId"  element={<TeamPage />} />
+          <Route path="/settings"      element={<SettingsPage />} />
+          <Route path="/assistant"     element={<HubAssistPage />} />
+          <Route path="/activity-log"  element={<ActivityLogPage />} />
           <Route path="/project-config" element={<ProjectConfigPage />} />
-          <Route path="/admin/setup" element={<AdminSetupPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/admin/setup"   element={<AdminSetupPage />} />
+          <Route path="*"              element={<Navigate to="/" replace />} />
         </Routes>
       </AppLayout>
     </>

@@ -1,54 +1,102 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 
+// ─── Module-level access token ─────────────────────────────────────────────
+// The access token lives only in memory — never written to localStorage.
+// useAuthStore calls setApiToken() after login/refresh; the Axios interceptor
+// reads it here. This avoids a circular import between api.ts and useAuthStore.
+
+let _accessToken: string | null = null;
+
+export const setApiToken = (token: string | null): void => {
+  _accessToken = token;
+};
+
+export const getApiToken = (): string | null => _accessToken;
+
+// ─── Axios instance ────────────────────────────────────────────────────────
+// withCredentials: true — required so the browser sends the httpOnly refresh
+// cookie to /api/auth/refresh and /api/auth/logout on every request that
+// targets those paths.
+
 const api: AxiosInstance = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 });
 
-// Request interceptor: attach JWT
+// ─── Request interceptor — attach access token ────────────────────────────
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('hub_token');
-  if (token && config.headers) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (_accessToken && config.headers) {
+    config.headers.Authorization = `Bearer ${_accessToken}`;
   }
   return config;
 });
 
-// Response interceptor: handle 401 with refresh
+// ─── Response interceptor — silent refresh on 401 ────────────────────────
+// When the access token expires (15 min), any 401 response triggers a silent
+// refresh using the httpOnly refresh cookie. The cookie is sent automatically
+// by the browser because withCredentials: true is set. No token is read from
+// localStorage. On success: new access token is stored in memory and the
+// original request is retried once. On failure: auth:logout event is fired
+// so App.tsx can redirect to the login screen cleanly.
+
+let _refreshPromise: Promise<string> | null = null;
+
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config as typeof error.config & { _retry?: boolean };
     if (!originalRequest) return Promise.reject(error);
 
-    if (error.response?.status === 401 && !(originalRequest as any)._retry) {
-      (originalRequest as any)._retry = true;
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      // Deduplicate concurrent 401s — only one refresh call in flight at a time
+      if (!_refreshPromise) {
+        _refreshPromise = axios
+          .post<{ data: { accessToken: string } }>(
+            '/api/auth/refresh',
+            {},
+            { withCredentials: true }
+          )
+          .then((res) => {
+            const newToken = res.data.data.accessToken;
+            setApiToken(newToken);
+            return newToken;
+          })
+          .catch((err) => {
+            setApiToken(null);
+            // Signal App.tsx to show the login screen without a hard redirect
+            window.dispatchEvent(new CustomEvent('auth:logout'));
+            return Promise.reject(err);
+          })
+          .finally(() => {
+            _refreshPromise = null;
+          });
+      }
+
       try {
-        const refreshRes = await axios.post('/api/auth/refresh', {}, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('hub_token') || ''}`,
-          },
-        });
-        const { accessToken } = refreshRes.data.data;
-        localStorage.setItem('hub_token', accessToken);
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        const newToken = await _refreshPromise;
+        originalRequest.headers!.Authorization = `Bearer ${newToken}`;
         return api(originalRequest);
-      } catch (refreshError) {
-        localStorage.removeItem('hub_token');
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
+      } catch {
+        return Promise.reject(error);
       }
     }
+
     return Promise.reject(error);
   }
 );
 
-// ─── Auth API ──────────────────────────────────────────────────
+// ─── Auth API ──────────────────────────────────────────────────────────────
 export const authApi = {
   login: (username: string, password: string) =>
     api.post('/auth/login', { username, password }),
   me: () => api.get('/auth/me'),
-  refresh: () => api.post('/auth/refresh'),
+  // Cookie is sent automatically — no body or header needed
+  refresh: () => api.post('/auth/refresh', {}),
+  // Clears the httpOnly cookie server-side; requires valid access token
+  logout: () => api.post('/auth/logout', {}),
   forgotPassword: (username: string, lang: string) =>
     api.post('/auth/forgot-password', { username, lang }),
   resetPassword: (token: string, password: string) =>
@@ -57,20 +105,24 @@ export const authApi = {
   ndaStatus: () => api.get('/auth/nda/status'),
 };
 
-// ─── i18n API ──────────────────────────────────────────────────
+// ─── i18n API ──────────────────────────────────────────────────────────────
 export const i18nApi = {
   getLanguages: () => api.get('/languages'),
   getUiStrings: (lang: string) => api.get('/ui-strings', { params: { lang } }),
   getLocale: (lang: string) => api.get(`/locales/${lang}`),
   getLocaleSection: (lang: string, sectionPath: string) =>
     api.get(`/locales/${lang}/${sectionPath}`),
-  saveLocaleContent: (lang: string, sectionPath: string, content: unknown, updatedBy: string) =>
-    api.post(`/locales/${lang}`, { sectionPath, content, updatedBy }),
+  saveLocaleContent: (
+    lang: string,
+    sectionPath: string,
+    content: unknown,
+    updatedBy: string
+  ) => api.post(`/locales/${lang}`, { sectionPath, content, updatedBy }),
   saveUiString: (key: string, languageCode: string, value: string) =>
     api.post('/ui-strings', { key, languageCode, value }),
 };
 
-// ─── User API ──────────────────────────────────────────────────
+// ─── User API ──────────────────────────────────────────────────────────────
 export const userApi = {
   getAll: () => api.get('/users'),
   getById: (id: number) => api.get(`/users/${id}`),
@@ -81,56 +133,44 @@ export const userApi = {
     api.post('/users/change-password', { currentPassword, newPassword }),
 };
 
-// ─── Team API ──────────────────────────────────────────────────
+// ─── Team API ──────────────────────────────────────────────────────────────
 export const teamApi = {
   getAll: () => api.get('/teams'),
 };
 
-// ─── Config API ────────────────────────────────────────────────
+// ─── Config API ────────────────────────────────────────────────────────────
 export const configApi = {
   get: () => api.get('/config'),
   save: (config: Record<string, unknown>) => api.post('/config', config),
 };
 
-// ─── Audit API ─────────────────────────────────────────────────
+// ─── Audit API ─────────────────────────────────────────────────────────────
 export const auditApi = {
-  getLogs: (params?: Record<string, string | number>) => api.get('/audit', { params }),
+  getLogs: (params?: Record<string, unknown>) =>
+    api.get('/audit', { params }),
+  exportCsv: () => api.get('/audit/export', { responseType: 'blob' }),
 };
 
-// ─── File API ──────────────────────────────────────────────────
+// ─── File API ──────────────────────────────────────────────────────────────
 export const fileApi = {
+  upload: (formData: FormData) =>
+    api.post('/files/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
   getTeamFiles: (teamId: string) => api.get(`/files/${teamId}/files`),
-  uploadTeamFile: (teamId: string, file: FormData) =>
-    api.post(`/files/${teamId}/files/upload`, file, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
-  deleteTeamFile: (fileId: number) => api.delete(`/files/files/${fileId}`),
   getGallery: (teamId: string) => api.get(`/files/${teamId}/gallery`),
-  uploadGallery: (teamId: string, file: FormData) =>
-    api.post(`/files/${teamId}/gallery/upload`, file, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
-  deleteGalleryImage: (imageId: number) => api.delete(`/files/gallery/${imageId}`),
-  getPdfDocuments: (teamId: string) => api.get(`/files/${teamId}/pdf`),
-  uploadPdf: (teamId: string, file: FormData) =>
-    api.post(`/files/${teamId}/pdf/upload`, file, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
-  deletePdf: (docId: number) => api.delete(`/files/pdf/${docId}`),
-  upload: (file: FormData) =>
-    api.post('/files/upload', file, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
+  getPdfs: (teamId: string) => api.get(`/files/${teamId}/pdf`),
+  getSummaries: (teamId: string) => api.get(`/files/${teamId}/summaries`),
 };
 
-// ─── Kimi Proxy ────────────────────────────────────────────────
-export const kimiApi = {
-  chat: (body: Record<string, unknown>) => api.post('/kimi', body),
-};
-
-// ─── Health ────────────────────────────────────────────────────
+// ─── Health API ────────────────────────────────────────────────────────────
 export const healthApi = {
   check: () => api.get('/health'),
+};
+
+// ─── Kimi AI API ───────────────────────────────────────────────────────────
+export const kimiApi = {
+  chat: (body: Record<string, unknown>) => api.post('/kimi', body),
 };
 
 export default api;

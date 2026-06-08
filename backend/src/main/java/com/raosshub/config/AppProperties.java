@@ -15,8 +15,13 @@ public class AppProperties {
     @Data
     public static class Jwt {
         private String secret;
-        private long expirationMs = 900000;         // 15 min
-        private long refreshExpirationMs = 604800000; // 7 days
+        private long expirationMs = 900000;            // 15 min — access token
+        private long refreshExpirationMs = 604800000;  // 7 days — refresh token
+        /**
+         * Set false for local dev (HTTP localhost).
+         * Set true in production via APP_JWT_COOKIE_SECURE=true env var (requires HTTPS).
+         */
+        private boolean cookieSecure = false;
     }
 
     @Data

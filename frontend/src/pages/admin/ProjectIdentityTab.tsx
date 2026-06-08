@@ -76,6 +76,7 @@ const defaultForm: IdentityForm = {
 export interface ProjectIdentityTabHandle {
   save: () => void;
   reset: () => void;
+  getData: () => IdentityForm;
   hasChanges: boolean;
   saving: boolean;
 }
@@ -183,9 +184,10 @@ const ProjectIdentityTab = React.forwardRef<ProjectIdentityTabHandle, ProjectIde
   useImperativeHandle(ref, () => ({
     save: handleSave,
     reset: handleReset,
+    getData: () => form,
     get hasChanges() { return hasChanges; },
     get saving() { return saving; },
-  }), [handleSave, handleReset, hasChanges, saving]);
+  }), [handleSave, handleReset, form, hasChanges, saving]);
 
   if (loading) {
     return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, fontSize: 13, color: 'var(--text-muted)' }}>Loading...</div>;

@@ -96,6 +96,7 @@ export const Icons = {
   menu:        ({ size, className, style }: IconProps) => svgBase(<><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></>, size, className, style),
   search:      ({ size, className, style }: IconProps) => svgBase(<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>, size, className, style),
   chevronDown: ({ size, className, style }: IconProps) => svgBase(<polyline points="6 9 12 15 18 9"/>, size, className, style),
+  chevronLeft: ({ size, className, style }: IconProps) => svgBase(<polyline points="15 18 9 12 15 6"/>, size, className, style),
   chevronRight:({ size, className, style }: IconProps) => svgBase(<polyline points="9 18 15 12 9 6"/>, size, className, style),
   hand:        ({ size, className, style }: IconProps) => svgBase(<><path d="M18 11V6a2 2 0 00-2-2v0a2 2 0 00-2 2v0"/><path d="M14 10V4a2 2 0 00-2-2v0a2 2 0 00-2 2v2"/><path d="M10 10.5V6a2 2 0 00-2-2v0a2 2 0 00-2 2v8"/><path d="M18 8a2 2 0 012 2v4a6 6 0 01-6 6h-2c-2 0-4-1-6-3l-2.5-2.5"/></>, size, className, style),
 };

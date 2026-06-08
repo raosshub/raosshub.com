@@ -1,9 +1,11 @@
 package com.raosshub.security;
 
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -26,10 +28,18 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Single security filter chain. Public paths use permitAll().
- * No web.ignoring() — all requests go through the filter chain.
- * JWT filter authenticates token-bearing requests.
- * @PreAuthorize on controllers handles role-based access.
+ * Single security filter chain.
+ *
+ * Public paths: login, refresh, forgot/reset-password, health, file serve,
+ * languages, ui-strings.
+ *
+ * /api/locales/** is intentionally NOT in permitAll — locale content is
+ * confidential project data. Only /api/ui-strings stays public (login screen
+ * translated labels).
+ *
+ * AuthenticationEntryPoint returns 401 (not Spring's default 403) so the
+ * Axios 401 interceptor on the frontend can trigger silent token refresh
+ * correctly when access tokens expire.
  */
 @Configuration
 @EnableWebSecurity
@@ -47,29 +57,41 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(securityCorsSource()))
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(exceptions -> exceptions
+                // Return 401 for unauthenticated requests so the Axios interceptor
+                // fires correctly. Spring Security 6 defaults to 403 without this.
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.getWriter().write(
+                        "{\"success\":false,\"message\":\"Authentication required\"}"
+                    );
+                })
+            )
             .authorizeHttpRequests(auth -> auth
-                // CORS preflight
+                // CORS preflight — never block
                 .requestMatchers(new AntPathRequestMatcher("/**", HttpMethod.OPTIONS.name())).permitAll()
                 // Public auth endpoints
                 .requestMatchers(
                     new AntPathRequestMatcher("/api/auth/login"),
                     new AntPathRequestMatcher("/api/auth/refresh"),
+                    new AntPathRequestMatcher("/api/auth/logout"),
                     new AntPathRequestMatcher("/api/auth/forgot-password"),
                     new AntPathRequestMatcher("/api/auth/reset-password")
                 ).permitAll()
                 // Health
                 .requestMatchers(new AntPathRequestMatcher("/api/health")).permitAll()
-                // Public file serve (images, models, logos, favicons)
+                // Public file serve (images, 3D models, logos, favicons)
                 .requestMatchers(new AntPathRequestMatcher("/api/files/serve/**")).permitAll()
-                // I18n / locale (read-only public)
+                // i18n — only UI strings and language list are public
                 .requestMatchers(new AntPathRequestMatcher("/api/languages")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/languages/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/ui-strings")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/ui-strings/**")).permitAll()
-                .requestMatchers(new AntPathRequestMatcher("/api/locales/**")).permitAll()
+                // NOTE: /api/locales/** is intentionally NOT listed here.
                 // Error page
                 .requestMatchers(new AntPathRequestMatcher("/error")).permitAll()
-                // Everything else needs authentication
+                // Everything else requires a valid access token
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())
@@ -82,42 +104,36 @@ public class SecurityConfig {
     public CorsConfigurationSource securityCorsSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        // Localhost origins for development
         config.setAllowedOrigins(Arrays.asList(
             "http://localhost:3000",
-            "http://localhost:5173",
             "http://localhost",
-            "http://localhost:80",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1"
+            "http://localhost:80"
         ));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("Authorization", "X-Total-Count"));
         config.setAllowCredentials(true);
-        config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
+        source.registerCorsConfiguration("/api/**", config);
         return source;
     }
 
     @Bean
     public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService);
-        authProvider.setPasswordEncoder(passwordEncoder());
-        return authProvider;
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setUserDetailsService(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder());
+        return provider;
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config)
+            throws Exception {
         return config.getAuthenticationManager();
     }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(12);
+        return new BCryptPasswordEncoder();
     }
 }

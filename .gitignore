@@ -44,3 +44,5 @@ minio_data/
 # ---- Misc ----
 *.tmp
 *.temp
+
+Key/

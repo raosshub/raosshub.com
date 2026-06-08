@@ -16,6 +16,10 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+        // Rewrite the cookie domain so httpOnly cookies set by the backend
+        // are stored for localhost (the browser's origin) rather than being
+        // dropped when the proxy rewrites the host from :3000 to :8080.
+        cookieDomainRewrite: '',
       },
     },
   },

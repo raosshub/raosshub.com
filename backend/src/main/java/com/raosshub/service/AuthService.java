@@ -1,6 +1,9 @@
 package com.raosshub.service;
 
-import com.raosshub.dto.*;
+import com.raosshub.dto.ForgotPasswordRequest;
+import com.raosshub.dto.LoginRequest;
+import com.raosshub.dto.ResetPasswordRequest;
+import com.raosshub.dto.UserDto;
 import com.raosshub.entity.PasswordResetToken;
 import com.raosshub.entity.User;
 import com.raosshub.repository.NdaAgreementRepository;
@@ -20,9 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -37,8 +38,17 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuditLogService auditLogService;
 
+    /**
+     * Internal token pair — never serialised to JSON.
+     * Controller uses this to set the refresh token as an httpOnly cookie
+     * and return only the access token to the client.
+     */
+    public record AuthTokens(String accessToken, String refreshToken, UserDto user) {}
+
+    // ─── Login ────────────────────────────────────────────────────────────────
+
     @Transactional
-    public LoginResponse login(LoginRequest request, String ipAddress) {
+    public AuthTokens login(LoginRequest request, String ipAddress) {
         try {
             Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
@@ -50,7 +60,6 @@ public class AuthService {
             SecurityContextHolder.getContext().setAuthentication(authentication);
             UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
 
-            // Update last login
             User user = userRepository.findByUsername(userDetails.getUsername()).orElseThrow();
             user.setLastLogin(Instant.now());
             userRepository.save(user);
@@ -59,21 +68,53 @@ public class AuthService {
             ndaAgreementRepository.findByUserId(user.getId())
                 .ifPresent(ndaAgreementRepository::delete);
 
-            String accessToken = tokenProvider.generateAccessToken(authentication);
+            String accessToken  = tokenProvider.generateAccessToken(authentication);
+            String refreshToken = tokenProvider.generateRefreshToken(authentication);
 
             auditLogService.log(userDetails.getUsername(), "login", "auth", user.getId(),
                 "User logged in", ipAddress);
 
-            return LoginResponse.builder()
-                .accessToken(accessToken)
-                .tokenType("Bearer")
-                .user(toUserDto(userDetails))
-                .build();
+            return new AuthTokens(accessToken, refreshToken, toUserDto(userDetails));
 
         } catch (BadCredentialsException e) {
             throw new BadCredentialsException("Invalid credentials");
         }
     }
+
+    // ─── Refresh ──────────────────────────────────────────────────────────────
+
+    /**
+     * Validates the refresh token from the httpOnly cookie, generates a fresh
+     * access token and a new refresh token (rotation), and returns both.
+     * The controller sets the new refresh token as a cookie and returns only
+     * the access token to the client.
+     */
+    @Transactional
+    public AuthTokens refresh(String refreshToken) {
+        if (!tokenProvider.validateToken(refreshToken) || !tokenProvider.isRefreshToken(refreshToken)) {
+            throw new RuntimeException("Invalid or expired refresh token");
+        }
+
+        String username = tokenProvider.getUsernameFromToken(refreshToken);
+        User user = userRepository.findByUsername(username)
+            .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (!Boolean.TRUE.equals(user.getIsActive())) {
+            throw new RuntimeException("User account is inactive");
+        }
+
+        UserDetailsImpl userDetails = UserDetailsImpl.build(user);
+        UsernamePasswordAuthenticationToken auth =
+            new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+
+        // Rotate: issue new access + refresh tokens on every refresh call
+        String newAccessToken  = tokenProvider.generateAccessToken(auth);
+        String newRefreshToken = tokenProvider.generateRefreshToken(auth);
+
+        return new AuthTokens(newAccessToken, newRefreshToken, toUserDto(userDetails));
+    }
+
+    // ─── Current user ─────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public UserDto getCurrentUser(String username) {
@@ -82,43 +123,48 @@ public class AuthService {
         return toUserDto(UserDetailsImpl.build(user));
     }
 
+    // ─── Password reset ───────────────────────────────────────────────────────
+
     @Transactional
     public void forgotPassword(ForgotPasswordRequest request) {
-        User user = userRepository.findByUsername(request.getUsername())
-            .orElse(null);
+        User user = userRepository.findByUsername(request.getUsername()).orElse(null);
 
         if (user == null) {
-            // Don't reveal if user exists
-            log.info("Password reset requested for non-existent user: {}", request.getUsername());
+            // Do not reveal whether the account exists
+            log.info("[Auth] Password reset requested for unknown user: {}", request.getUsername());
             return;
         }
 
-        // Invalidate old tokens
+        // Invalidate any existing unused tokens for this user.
+        // PasswordResetTokenRepository has findByToken() only — no findByUserId().
+        // Use findAll + stream to locate tokens belonging to this user.
         resetTokenRepository.findAll().stream()
             .filter(t -> t.getUser().getId().equals(user.getId()) && !t.getUsed())
-            .forEach(t -> { t.setUsed(true); resetTokenRepository.save(t); });
+            .forEach(t -> {
+                t.setUsed(true);
+                resetTokenRepository.save(t);
+            });
 
-        String token = UUID.randomUUID().toString();
         PasswordResetToken resetToken = new PasswordResetToken();
         resetToken.setUser(user);
-        resetToken.setToken(token);
+        resetToken.setToken(UUID.randomUUID().toString());
         resetToken.setExpiresAt(Instant.now().plusSeconds(3600)); // 1 hour
         resetTokenRepository.save(resetToken);
 
-        // TODO: Send email with reset link
-        log.info("Password reset token generated for user: {} (token: {})", user.getUsername(), token);
+        log.info("[Auth] Password reset token generated for user: {}", user.getUsername());
     }
 
     @Transactional
     public void resetPassword(ResetPasswordRequest request) {
         PasswordResetToken token = resetTokenRepository.findByToken(request.getToken())
-            .orElseThrow(() -> new RuntimeException("Invalid or expired token"));
+            .orElseThrow(() -> new RuntimeException("Invalid or expired reset token"));
 
-        if (token.getUsed() || token.getExpiresAt().isBefore(Instant.now())) {
-            throw new RuntimeException("Token expired");
+        if (Boolean.TRUE.equals(token.getUsed()) || token.getExpiresAt().isBefore(Instant.now())) {
+            throw new RuntimeException("Reset token has expired");
         }
 
         User user = token.getUser();
+        // User entity field is passwordHash — Lombok generates setPasswordHash(), not setPassword()
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         userRepository.save(user);
 
@@ -126,32 +172,7 @@ public class AuthService {
         resetTokenRepository.save(token);
     }
 
-    @Transactional
-    public LoginResponse refreshToken(String refreshToken) {
-        if (!tokenProvider.validateToken(refreshToken) || !tokenProvider.isRefreshToken(refreshToken)) {
-            throw new RuntimeException("Invalid refresh token");
-        }
-
-        String username = tokenProvider.getUsernameFromToken(refreshToken);
-        User user = userRepository.findByUsername(username)
-            .orElseThrow(() -> new RuntimeException("User not found"));
-
-        if (!Boolean.TRUE.equals(user.getIsActive())) {
-            throw new RuntimeException("User is inactive");
-        }
-
-        UserDetailsImpl userDetails = UserDetailsImpl.build(user);
-        UsernamePasswordAuthenticationToken auth =
-            new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-
-        String newAccessToken = tokenProvider.generateAccessToken(auth);
-
-        return LoginResponse.builder()
-            .accessToken(newAccessToken)
-            .tokenType("Bearer")
-            .user(toUserDto(userDetails))
-            .build();
-    }
+    // ─── Private helpers ──────────────────────────────────────────────────────
 
     private UserDto toUserDto(UserDetailsImpl user) {
         return UserDto.builder()

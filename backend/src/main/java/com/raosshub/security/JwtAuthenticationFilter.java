@@ -17,10 +17,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 /**
- * JWT authentication filter. Processes Bearer tokens on incoming requests.
- * shouldNotFilter() must EXACTLY MATCH the permitAll() paths in SecurityConfig.
- * This ensures public endpoints skip JWT processing, while all others
- * (including /api/auth/me, /api/auth/nda) get authenticated.
+ * JWT authentication filter. Extracts and validates Bearer tokens on every request.
+ *
+ * shouldNotFilter() must EXACTLY match the permitAll() paths in SecurityConfig.
+ * Any path listed here bypasses JWT processing — keep this list minimal.
+ *
+ * /api/locales/** is intentionally NOT in the skip list. Locale content is
+ * confidential project data and requires a valid access token.
  */
 @Slf4j
 @Component
@@ -32,30 +35,32 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
+        String path   = request.getRequestURI();
         String method = request.getMethod();
 
         // CORS preflight — never filter
         if ("OPTIONS".equalsIgnoreCase(method)) return true;
 
-        // Public auth endpoints — no JWT needed
-        if (path.equals("/api/auth/login")) return true;
-        if (path.equals("/api/auth/refresh")) return true;
+        // Public auth endpoints
+        if (path.equals("/api/auth/login"))           return true;
+        if (path.equals("/api/auth/refresh"))         return true;
         if (path.equals("/api/auth/forgot-password")) return true;
-        if (path.equals("/api/auth/reset-password")) return true;
+        if (path.equals("/api/auth/reset-password"))  return true;
+        // /api/auth/logout is authenticated (@PreAuthorize) — DO NOT skip;
+        // the filter must process it so Spring Security resolves the principal.
 
         // Health check
         if (path.equals("/api/health")) return true;
 
-        // I18n / locale (read-only public)
-        if (path.startsWith("/api/languages")) return true;
+        // i18n — only UI strings and language list are public
+        if (path.startsWith("/api/languages"))  return true;
         if (path.startsWith("/api/ui-strings")) return true;
-        if (path.startsWith("/api/locales")) return true;
+        // NOTE: /api/locales is intentionally NOT here — requires auth
 
-        // Public file serve (images, models, logos, favicons)
+        // Public file serve (images, 3D models, logos, favicons)
         if (path.startsWith("/api/files/serve")) return true;
 
-        // All other paths go through JWT filter
+        // Everything else goes through JWT validation
         return false;
     }
 
@@ -66,14 +71,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             String jwt = getJwtFromRequest(request);
 
-            if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt) && !tokenProvider.isRefreshToken(jwt)) {
+            if (StringUtils.hasText(jwt)
+                    && tokenProvider.validateToken(jwt)
+                    && !tokenProvider.isRefreshToken(jwt)) {
+
                 String username = tokenProvider.getUsernameFromToken(jwt);
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
                 UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
+                    new UsernamePasswordAuthenticationToken(
+                        userDetails, null, userDetails.getAuthorities()
+                    );
+                authentication.setDetails(
+                    new WebAuthenticationDetailsSource().buildDetails(request)
+                );
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         } catch (Exception e) {

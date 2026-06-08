@@ -31,14 +31,18 @@ public class JwtTokenProvider {
 
     public String generateAccessToken(Authentication authentication) {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
-        Instant now = Instant.now();
+        Instant now    = Instant.now();
         Instant expiry = now.plusMillis(appProperties.getJwt().getExpirationMs());
 
         return Jwts.builder()
             .subject(userDetails.getUsername())
             .claim("userId", userDetails.getId())
-            .claim("role", userDetails.getRole())
-            .claim("type", "access")
+            .claim("role",   userDetails.getRole())
+            .claim("type",   "access")
+            // jti guarantees every token is unique even if issued within the same
+            // second. JWT timestamps are second-precision — without jti, two tokens
+            // issued in the same second for the same user are byte-identical.
+            .claim("jti",    UUID.randomUUID().toString())
             .issuedAt(Date.from(now))
             .expiration(Date.from(expiry))
             .signWith(jwtSecretKey)
@@ -47,13 +51,13 @@ public class JwtTokenProvider {
 
     public String generateRefreshToken(Authentication authentication) {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
-        Instant now = Instant.now();
+        Instant now    = Instant.now();
         Instant expiry = now.plusMillis(appProperties.getJwt().getRefreshExpirationMs());
 
         return Jwts.builder()
             .subject(userDetails.getUsername())
             .claim("type", "refresh")
-            .claim("jti", UUID.randomUUID().toString())
+            .claim("jti",  UUID.randomUUID().toString())
             .issuedAt(Date.from(now))
             .expiration(Date.from(expiry))
             .signWith(jwtSecretKey)
@@ -61,8 +65,7 @@ public class JwtTokenProvider {
     }
 
     public String getUsernameFromToken(String token) {
-        Claims claims = parseClaims(token);
-        return claims.getSubject();
+        return parseClaims(token).getSubject();
     }
 
     public boolean validateToken(String token) {
