@@ -1,18 +1,9 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 
 // ─── Module-level access token ─────────────────────────────────────────────
-// The access token lives only in memory — never written to localStorage.
-// useAuthStore calls setApiToken() after login/refresh.
-// The Axios interceptor reads it for all JSON API calls.
-// kimiApi.stream() reads it for the raw SSE fetch call.
-
 let _accessToken: string | null = null;
-
-export const setApiToken = (token: string | null): void => {
-  _accessToken = token;
-};
-
-export const getApiToken = (): string | null => _accessToken;
+export const setApiToken  = (token: string | null): void => { _accessToken = token; };
+export const getApiToken  = (): string | null => _accessToken;
 
 // ─── Axios instance ────────────────────────────────────────────────────────
 const api: AxiosInstance = axios.create({
@@ -21,7 +12,6 @@ const api: AxiosInstance = axios.create({
   withCredentials: true,
 });
 
-// ─── Request interceptor — attach access token ────────────────────────────
 api.interceptors.request.use((config) => {
   if (_accessToken && config.headers) {
     config.headers.Authorization = `Bearer ${_accessToken}`;
@@ -29,7 +19,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// ─── Response interceptor — silent refresh on 401 ────────────────────────
+// ─── Silent refresh on 401 ────────────────────────────────────────────────
 let _refreshPromise: Promise<string> | null = null;
 
 api.interceptors.response.use(
@@ -44,9 +34,7 @@ api.interceptors.response.use(
       if (!_refreshPromise) {
         _refreshPromise = axios
           .post<{ data: { accessToken: string } }>(
-            '/api/auth/refresh',
-            {},
-            { withCredentials: true }
+            '/api/auth/refresh', {}, { withCredentials: true }
           )
           .then((res) => {
             const newToken = res.data.data.accessToken;
@@ -58,9 +46,7 @@ api.interceptors.response.use(
             window.dispatchEvent(new CustomEvent('auth:logout'));
             return Promise.reject(err);
           })
-          .finally(() => {
-            _refreshPromise = null;
-          });
+          .finally(() => { _refreshPromise = null; });
       }
 
       try {
@@ -91,17 +77,39 @@ export const authApi = {
   ndaStatus:      () => api.get('/auth/nda/status'),
 };
 
-// ─── i18n API ──────────────────────────────────────────────────────────────
+// ─── i18n content API ─────────────────────────────────────────────────────
 export const i18nApi = {
   getLanguages:    () => api.get('/languages'),
   getUiStrings:    (lang: string) => api.get('/ui-strings', { params: { lang } }),
   getLocale:       (lang: string) => api.get(`/locales/${lang}`),
   getLocaleSection:(lang: string, sectionPath: string) =>
                      api.get(`/locales/${lang}/${sectionPath}`),
+  /**
+   * Returns locale content as a flat list of {sectionPath, content} records.
+   * Used by Tab 2 Kimi translation runner.
+   */
+  getSections:     (lang: string) => api.get(`/locales/${lang}/sections`),
   saveLocaleContent:(lang: string, sectionPath: string, content: unknown, updatedBy: string) =>
                      api.post(`/locales/${lang}`, { sectionPath, content, updatedBy }),
   saveUiString:    (key: string, languageCode: string, value: string) =>
                      api.post('/ui-strings', { key, languageCode, value }),
+};
+
+// ─── Language management API (superadmin) ─────────────────────────────────
+// Separated from i18nApi because these endpoints require SUPERADMIN auth.
+// The public i18nApi.getLanguages() uses GET /api/languages (public).
+// languageApi.getAll() uses GET /api/languages/all (superadmin).
+export const languageApi = {
+  getAll:    () =>
+               api.get('/languages/all'),
+  create:    (data: { code: string; name: string; nameNative: string; isRtl: boolean }) =>
+               api.post('/languages', data),
+  update:    (id: number, data: {
+               name?: string; nameNative?: string; isRtl?: boolean; isActive?: boolean;
+             }) =>
+               api.put(`/languages/${id}`, data),
+  setDefault:(id: number) =>
+               api.patch(`/languages/${id}/default`),
 };
 
 // ─── User API ──────────────────────────────────────────────────────────────
@@ -134,31 +142,23 @@ export const auditApi = {
 
 // ─── File API ──────────────────────────────────────────────────────────────
 export const fileApi = {
-  upload:          (formData: FormData) =>
-                     api.post('/files/upload', formData, {
-                       headers: { 'Content-Type': 'multipart/form-data' },
-                     }),
-  getTeamFiles:    (teamId: string) => api.get(`/files/${teamId}/files`),
-  getGallery:      (teamId: string) => api.get(`/files/${teamId}/gallery`),
-  getPdfs:         (teamId: string) => api.get(`/files/${teamId}/pdf`),
-  getSummaries:    (teamId: string) => api.get(`/files/${teamId}/summaries`),
+  upload:       (formData: FormData) =>
+                  api.post('/files/upload', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                  }),
+  getTeamFiles: (teamId: string) => api.get(`/files/${teamId}/files`),
+  getGallery:   (teamId: string) => api.get(`/files/${teamId}/gallery`),
+  getPdfs:      (teamId: string) => api.get(`/files/${teamId}/pdf`),
+  getSummaries: (teamId: string) => api.get(`/files/${teamId}/summaries`),
 };
 
 // ─── Kimi AI API ───────────────────────────────────────────────────────────
 export const kimiApi = {
-  // Non-streaming — returns full response after Moonshot finishes.
   chat: (body: Record<string, unknown>) => api.post('/kimi', body),
 
   /**
-   * Streaming — returns the raw browser Response so the caller can read
-   * body as a ReadableStream for progressive SSE rendering.
-   *
-   * Usage in HubAssistPage:
-   *   const response = await kimiApi.stream(body);
-   *   const reader   = response.body?.getReader();
-   *
-   * The httpOnly refresh cookie is sent automatically via credentials: 'include'.
-   * The access token is attached as a Bearer header from the module-level variable.
+   * Streaming — returns raw Response for progressive SSE rendering.
+   * Used by HubAssistPage. Auth token attached manually (not via Axios).
    */
   stream: (body: Record<string, unknown>): Promise<Response> => {
     const token = getApiToken();

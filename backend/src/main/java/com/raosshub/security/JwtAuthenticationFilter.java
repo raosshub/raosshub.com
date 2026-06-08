@@ -17,13 +17,21 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 /**
- * JWT authentication filter. Extracts and validates Bearer tokens on every request.
+ * JWT authentication filter.
  *
- * shouldNotFilter() must EXACTLY match the permitAll() paths in SecurityConfig.
- * Any path listed here bypasses JWT processing — keep this list minimal.
+ * shouldNotFilter() must exactly mirror the permitAll() paths in SecurityConfig.
+ * Using startsWith() for paths that have protected sub-paths causes the filter to
+ * skip JWT processing for those sub-paths, leaving SecurityContext empty.
+ * Spring Security then fires the 401 AuthenticationEntryPoint even when a valid
+ * token was sent.
  *
- * /api/locales/** is intentionally NOT in the skip list. Locale content is
- * confidential project data and requires a valid access token.
+ * Rules:
+ *   /api/languages          — public (exact match only)
+ *   /api/languages/**       — requires auth (Tab 2 management endpoints)
+ *   /api/ui-strings         — public
+ *   /api/ui-strings/**      — public
+ *   /api/locales/**         — requires auth (NDA-gated locale content)
+ *   All other paths         — JWT processed
  */
 @Slf4j
 @Component
@@ -41,26 +49,30 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // CORS preflight — never filter
         if ("OPTIONS".equalsIgnoreCase(method)) return true;
 
-        // Public auth endpoints
-        if (path.equals("/api/auth/login"))           return true;
-        if (path.equals("/api/auth/refresh"))         return true;
+        // Public auth endpoints — no JWT needed
+        if (path.equals("/api/auth/login"))          return true;
+        if (path.equals("/api/auth/refresh"))        return true;
         if (path.equals("/api/auth/forgot-password")) return true;
-        if (path.equals("/api/auth/reset-password"))  return true;
-        // /api/auth/logout is authenticated (@PreAuthorize) — DO NOT skip;
-        // the filter must process it so Spring Security resolves the principal.
+        if (path.equals("/api/auth/reset-password")) return true;
 
         // Health check
-        if (path.equals("/api/health")) return true;
+        if (path.equals("/api/health"))              return true;
+        if (path.startsWith("/api/health/"))         return true;
 
-        // i18n — only UI strings and language list are public
-        if (path.startsWith("/api/languages"))  return true;
-        if (path.startsWith("/api/ui-strings")) return true;
-        // NOTE: /api/locales is intentionally NOT here — requires auth
+        // Language list — public, exact path only.
+        // /api/languages/all, /api/languages/{id}, /api/languages/{id}/default
+        // all require auth and must NOT be skipped here.
+        if (path.equals("/api/languages"))           return true;
 
-        // Public file serve (images, 3D models, logos, favicons)
-        if (path.startsWith("/api/files/serve")) return true;
+        // UI strings — fully public (login screen needs these before auth)
+        if (path.equals("/api/ui-strings"))          return true;
+        if (path.startsWith("/api/ui-strings/"))     return true;
 
-        // Everything else goes through JWT validation
+        // Public file serve (logos, images, favicons, 3D models)
+        if (path.startsWith("/api/files/serve"))     return true;
+
+        // All other paths — including /api/languages/**, /api/locales/**,
+        // /api/kimi/**, /api/config, /api/users/**, etc. — go through JWT filter.
         return false;
     }
 
@@ -85,6 +97,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 authentication.setDetails(
                     new WebAuthenticationDetailsSource().buildDetails(request)
                 );
+
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         } catch (Exception e) {

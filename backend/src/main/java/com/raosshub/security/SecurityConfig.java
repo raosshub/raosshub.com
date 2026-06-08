@@ -32,14 +32,19 @@ import java.util.stream.Collectors;
 /**
  * Single security filter chain.
  *
- * CORS origins are read from app.cors.allowed-origins in application.yml.
- * Override via APP_CORS_ALLOWED_ORIGINS env var in production — no code change needed.
+ * Public paths (no token required):
+ *   - /api/auth/** — login, refresh, logout, forgot/reset password
+ *   - /api/health — liveness check
+ *   - GET /api/languages — active language list (exact path only; management sub-paths require auth)
+ *   - /api/ui-strings, /api/ui-strings/** — UI label strings for login screen
+ *   - /api/files/serve/** — public file serving (logos, images)
  *
- * /api/locales/** requires authentication — locale content is confidential project
- * data protected by NDA. Only /api/ui-strings stays public (login screen labels).
+ * /api/languages/** (all sub-paths) is intentionally NOT public.
+ * Language management endpoints require authentication + SUPERADMIN role,
+ * enforced by @PreAuthorize on the controller methods.
  *
- * AuthenticationEntryPoint returns 401 (not Spring's default 403) so the Axios 401
- * interceptor can trigger silent token refresh correctly when access tokens expire.
+ * /api/locales/** requires authentication — locale content is confidential
+ * project data protected by NDA.
  */
 @Configuration
 @EnableWebSecurity
@@ -48,8 +53,8 @@ import java.util.stream.Collectors;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
-    private final UserDetailsServiceImpl userDetailsService;
-    private final AppProperties appProperties;
+    private final UserDetailsServiceImpl  userDetailsService;
+    private final AppProperties           appProperties;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -58,9 +63,7 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(securityCorsSource()))
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .exceptionHandling(exceptions -> exceptions
-                // Return 401 for unauthenticated requests so the Axios interceptor
-                // fires correctly. Spring Security 6 defaults to 403 without this.
+            .exceptionHandling(ex -> ex
                 .authenticationEntryPoint((request, response, authException) -> {
                     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -70,9 +73,12 @@ public class SecurityConfig {
                 })
             )
             .authorizeHttpRequests(auth -> auth
-                // CORS preflight — never block
-                .requestMatchers(new AntPathRequestMatcher("/**", HttpMethod.OPTIONS.name())).permitAll()
-                // Public auth endpoints
+                // CORS preflight
+                .requestMatchers(
+                    new AntPathRequestMatcher("/**", HttpMethod.OPTIONS.name())
+                ).permitAll()
+
+                // Auth
                 .requestMatchers(
                     new AntPathRequestMatcher("/api/auth/login"),
                     new AntPathRequestMatcher("/api/auth/refresh"),
@@ -80,19 +86,27 @@ public class SecurityConfig {
                     new AntPathRequestMatcher("/api/auth/forgot-password"),
                     new AntPathRequestMatcher("/api/auth/reset-password")
                 ).permitAll()
+
                 // Health
                 .requestMatchers(new AntPathRequestMatcher("/api/health")).permitAll()
-                // Public file serve (images, 3D models, logos, favicons)
+
+                // Files — public serve
                 .requestMatchers(new AntPathRequestMatcher("/api/files/serve/**")).permitAll()
-                // i18n — only UI strings and language list are public
+
+                // i18n — public:
+                //   GET /api/languages         — active language list (exact only)
+                //   /api/ui-strings/**         — UI label strings
+                // NOT public:
+                //   /api/languages/**          — language management (superadmin via @PreAuthorize)
+                //   /api/locales/**            — locale content (NDA-gated, requires auth)
                 .requestMatchers(new AntPathRequestMatcher("/api/languages")).permitAll()
-                .requestMatchers(new AntPathRequestMatcher("/api/languages/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/ui-strings")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/ui-strings/**")).permitAll()
-                // NOTE: /api/locales/** is intentionally NOT listed here — requires auth.
+
                 // Error page
                 .requestMatchers(new AntPathRequestMatcher("/error")).permitAll()
-                // Everything else requires a valid access token
+
+                // Everything else requires a valid JWT access token
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())
@@ -105,8 +119,6 @@ public class SecurityConfig {
     public CorsConfigurationSource securityCorsSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        // Read from app.cors.allowed-origins — comma-separated string.
-        // Set via APP_CORS_ALLOWED_ORIGINS env var in production.
         List<String> origins = Arrays.stream(
                 appProperties.getCors().getAllowedOrigins().split(",")
             )
