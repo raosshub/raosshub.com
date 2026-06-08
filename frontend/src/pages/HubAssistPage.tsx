@@ -44,42 +44,24 @@ const DEFAULT_SYSTEM_PROMPT = `You are HUB Assist, an AI assistant for the RAOSS
 
 const TEAMS = ['react', 'pcba', 'firmware', 'tft', 'router', 'charger', 'shell'];
 
-// ─── Markdown Renderer (lightweight) ──────────────────────────
+// ─── Markdown renderer (lightweight) ──────────────────────────
 const renderMarkdown = (text: string): string => {
-  let html = text
-    // Code blocks
+  return text
     .replace(/```(\w+)?\n([\s\S]*?)```/g, (_, lang, code) => {
       const language = lang || 'text';
       return `<pre style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;margin:8px 0;overflow-x:auto;"><div style="font-size:10px;color:#8b949e;margin-bottom:4px;font-family:'DM Mono',monospace;">${language}</div><code style="font-family:'DM Mono',monospace;font-size:13px;color:#e6edf3;line-height:1.6;white-space:pre;">${escapeHtml(code.trim())}</code></pre>`;
     })
-    // Inline code
     .replace(/`([^`]+)`/g, '<code style="background:rgba(110,118,129,0.25);padding:2px 6px;border-radius:4px;font-size:12px;font-family:\'DM Mono\',monospace;">$1</code>')
-    // Bold
     .replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--text-primary);">$1</strong>')
-    // Italic
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Headers
     .replace(/^### (.+)$/gm, '<h3 style="font-size:15px;font-weight:700;color:var(--accent);margin:16px 0 8px;">$1</h3>')
     .replace(/^## (.+)$/gm, '<h2 style="font-size:16px;font-weight:700;color:var(--text-primary);margin:18px 0 10px;">$1</h2>')
     .replace(/^# (.+)$/gm, '<h1 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:20px 0 12px;">$1</h1>')
-    // Blockquote
     .replace(/^&gt; (.+)$/gm, '<blockquote style="border-left:3px solid var(--accent);padding-left:12px;margin:8px 0;color:var(--text-secondary);font-style:italic;">$1</blockquote>')
-    // Unordered lists
     .replace(/^- (.+)$/gm, '<li style="margin:4px 0;color:var(--text-secondary);">$1</li>')
-    // Ordered lists (basic)
-    .replace(/^\d+\. (.+)$/gm, '<li style="margin:4px 0;color:var(--text-secondary);">$1</li>')
-    // Links
+    .replace(/^\d+\.\s+(.+)$/gm, '<li style="margin:4px 0;color:var(--text-secondary);">$1</li>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:var(--accent);text-decoration:none;">$1</a>')
-    // Tables
-    .replace(/\|(.+)\|/g, (match) => {
-      const cells = match.split('|').filter(Boolean).map((c) => c.trim());
-      if (cells.length === 0) return match;
-      return `<td style="border:1px solid var(--border);padding:6px 10px;font-size:13px;">${cells.join('</td><td style="border:1px solid var(--border);padding:6px 10px;font-size:13px;">')}</td>`;
-    })
-    // Line breaks
     .replace(/\n/g, '<br />');
-
-  return html;
 };
 
 const escapeHtml = (text: string): string => {
@@ -88,112 +70,108 @@ const escapeHtml = (text: string): string => {
   return div.innerHTML;
 };
 
-// ─── Components ───────────────────────────────────────────────
+// ─── Task type detector ───────────────────────────────────────
+const detectTaskType = (lower: string): string => {
+  if (lower.includes('scope') || lower.includes('scope of work') || lower.includes('sow')) return 'scope';
+  if (lower.includes('deliverable')) return 'deliverables';
+  if (lower.includes('milestone')) return 'milestones';
+  if (lower.includes('action item') || lower.includes('add action') || lower.includes('add todo')) return 'actions';
+  if (lower.includes('chat summary') || lower.includes('summarise') || lower.includes('meeting notes')) return 'chat_summary';
+  if (lower.includes('insight') || lower.includes('extract insight')) return 'insight';
+  if (lower.includes('risk') || lower.includes('risk assessment')) return 'risk';
+  if (lower.includes('responsibility matrix') || lower.includes('team responsible')) return 'responsibility';
+  if (lower.includes('review') || lower.includes('proofread') || lower.includes('diagnose')) return 'review';
+  if (lower.includes('email') || lower.includes('notify') || lower.includes('follow up')) return 'communication';
+  if (lower.includes('executive summary') || lower.includes('status update') || lower.includes('briefing')) return 'briefing';
+  return 'chat';
+};
 
+// ─── Component ────────────────────────────────────────────────
 const HubAssistPage: React.FC = () => {
   const { t, currentLang } = useI18nStore();
   const { addToast } = useNotificationStore();
   const { user } = useAuthStore();
 
-  const [sessions, setSessions] = useState<ChatSession[]>(loadSessions);
+  const [sessions, setSessions]             = useState<ChatSession[]>(loadSessions);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
-  const [inputText, setInputText] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [sidebarOpen] = useState(true);
-  const [sidebarView, setSidebarView] = useState<'sessions' | 'actions'>('sessions');
-  const [showHelpModal, setShowHelpModal] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const currentChatRef = useRef<HTMLDivElement>(null);
+  const [inputText, setInputText]           = useState('');
+  const [isLoading, setIsLoading]           = useState(false);
+  const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
+  const [sidebarView, setSidebarView]       = useState<'sessions' | 'actions'>('sessions');
+  const [showHelpModal, setShowHelpModal]   = useState(false);
+  const messagesEndRef  = useRef<HTMLDivElement>(null);
+  const textareaRef     = useRef<HTMLTextAreaElement>(null);
 
-  const currentSession = sessions.find((s) => s.id === currentSessionId) || null;
+  const currentSession = sessions.find((s) => s.id === currentSessionId) ?? null;
 
-  // ─── Scroll to bottom ────────────────────────────────────────
+  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentSession?.messages]);
 
-  // ─── Save sessions ───────────────────────────────────────────
-  useEffect(() => {
-    saveSessions(sessions);
-  }, [sessions]);
+  // Persist sessions
+  useEffect(() => { saveSessions(sessions); }, [sessions]);
 
-  // ─── Auto-create first session ───────────────────────────────
+  // Auto-create first session
   useEffect(() => {
     if (sessions.length === 0) {
-      const defaultSession: ChatSession = {
+      const welcome: ChatSession = {
         id: generateId(),
         title: 'Default Session',
-        messages: [
-          {
-            id: generateId(),
-            role: 'assistant',
-            content: `Welcome to **HUB Assist v1.0.0**!\n\nI\'m your AI assistant for the RAOSS Hub project management system. I can help you with:\n\n- **Project planning** and scheduling\n- **Technical documentation** and code review\n- **Team coordination** and task management\n- **Data analysis** and reporting\n\nType a message to get started.`,
-            timestamp: Date.now(),
-          },
-        ],
+        messages: [{
+          id: generateId(),
+          role: 'assistant',
+          content: currentLang === 'zh'
+            ? `欢迎使用 **HUB Assist**！\n\n我是 RAOSS Hub 项目管理系统的 AI 助手，可帮助您处理：\n\n- **项目规划**与进度管理\n- **技术文档**与代码审查\n- **团队协调**与任务管理\n\n请输入消息开始对话。`
+            : `Welcome to **HUB Assist**!\n\nI can help you with:\n\n- **Project planning** and scheduling\n- **Technical documentation** and code review\n- **Team coordination** and task management\n\nType a message to get started.`,
+          timestamp: Date.now(),
+        }],
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      setSessions([defaultSession]);
-      setCurrentSessionId(defaultSession.id);
+      setSessions([welcome]);
+      setCurrentSessionId(welcome.id);
     } else if (!currentSessionId) {
       setCurrentSessionId(sessions[0].id);
     }
   }, []);
 
-  // ─── Send message ────────────────────────────────────────────
+  // ─── Send message (streaming) ──────────────────────────────
   const sendMessage = useCallback(async (text?: string) => {
     const messageText = (text || inputText).trim();
     if (!messageText || isLoading || !currentSessionId) return;
 
+    const taskType   = detectTaskType(messageText.toLowerCase());
+    const userMsgId  = generateId();
+    const assistMsgId = generateId();
+
     const userMessage: Message = {
-      id: generateId(),
-      role: 'user',
-      content: messageText,
+      id:        userMsgId,
+      role:      'user',
+      content:   messageText,
       timestamp: Date.now(),
+      taskType,
     };
 
-    // Detect task type
-    const lower = messageText.toLowerCase();
-    let taskType = 'chat';
-    if (lower.includes('scope') || lower.includes('add scope') || lower.includes('scope of work') || lower.includes('sow')) taskType = 'scope';
-    else if (lower.includes('deliverable') || lower.includes('add deliverable')) taskType = 'deliverables';
-    else if (lower.includes('milestone') || lower.includes('add milestone')) taskType = 'milestones';
-    else if (lower.includes('action item') || lower.includes('add action') || lower.includes('add todo')) taskType = 'actions';
-    else if (lower.includes('chat summary') || lower.includes('summarise') || lower.includes('summarise this') || lower.includes('summarise chat') || lower.includes('summarise the chat') || lower.includes('meeting notes') || lower.includes('meeting minutes')) taskType = 'chat_summary';
-    else if (lower.includes('extract insight') || lower.includes('extract insights') || lower.includes('insight from')) taskType = 'insight';
-    else if (lower.includes('risk') || lower.includes('identify risk') || lower.includes('what are the risk') || lower.includes('risk assessment') || lower.includes('risk analysis') || lower.includes('identify the risk')) taskType = 'risk';
-    else if (lower.includes('team responsibility') || lower.includes('team responsibility matrix') || lower.includes('responsibility matrix') || lower.includes('team responsible')) taskType = 'responsibility';
-    else if (lower.includes('sequence diagram') || lower.includes('flow diagram') || lower.includes('mermaid') || lower.includes('diagram')) taskType = 'diagram';
-    else if (lower.includes('documentation') || lower.includes('create documentation') || lower.includes('create doc') || lower.includes('document') || lower.includes('create tech spec') || lower.includes('create technical documentation') || lower.includes('create technical spec') || lower.includes('create spec')) taskType = 'documentation';
-    else if (lower.includes('test plan') || lower.includes('test case') || lower.includes('test scenario') || lower.includes('test strategy') || lower.includes('testing plan')) taskType = 'testing';
-    else if (lower.includes('generate code') || lower.includes('write code') || lower.includes('code snippet') || lower.includes('create code')) taskType = 'code';
-    else if (lower.includes('resource estimate') || lower.includes('estimate resource') || lower.includes('how many') || lower.includes('how much') || lower.includes('cost estimate')) taskType = 'resources';
-    else if (lower.includes('meeting') || lower.includes('meeting agenda') || lower.includes('agenda') || lower.includes('schedule meeting') || lower.includes('meeting schedule')) taskType = 'meeting';
-    else if (lower.includes('compare option') || lower.includes('option comparison') || lower.includes('trade-off') || lower.includes('tradeoff') || lower.includes('vs') || lower.includes('versus') || lower.includes('pros and cons')) taskType = 'options';
-    else if (lower.includes('dependency') || lower.includes('interdependency') || lower.includes('depends on') || lower.includes('blocker') || lower.includes('blocking') || lower.includes('blocked by')) taskType = 'dependencies';
-    else if (lower.includes('standard') || lower.includes('compliance') || lower.includes('regulation') || lower.includes('certification') || lower.includes('requirement')) taskType = 'standards';
-    else if (lower.includes('generate locale') || lower.includes('translate content') || lower.includes('create locale') || lower.includes('localise') || lower.includes('localize') || lower.includes('generate translation') || lower.includes('translate to') || lower.includes('translation') || lower.includes('translate')) taskType = 'locale';
-    else if (lower.includes('analyse') || lower.includes('analyse the') || lower.includes('analyse data') || lower.includes('analyse this') || lower.includes('analyse the data') || lower.includes('analyse the following') || lower.includes('analyse the data below')) taskType = 'analysis';
-    else if (lower.includes('market research') || lower.includes('competitor') || lower.includes('market analysis') || lower.includes('competitive') || lower.includes('market')) taskType = 'market';
-    else if (lower.includes('create template') || lower.includes('create email') || lower.includes('create document') || lower.includes('create report') || lower.includes('create proposal') || lower.includes('create a') || lower.includes('create the')) taskType = 'template';
-    else if (lower.includes('review') || lower.includes('check') || lower.includes('verify') || lower.includes('validate') || lower.includes('inspect') || lower.includes('audit') || lower.includes('assess') || lower.includes('evaluate') || lower.includes('examine') || lower.includes('scrutinise') || lower.includes('appraise') || lower.includes('analyse') || lower.includes('screen') || lower.includes('vet') || lower.includes('go through') || lower.includes('look over') || lower.includes('double-check') || lower.includes('proofread') || lower.includes('diagnose') || lower.includes('troubleshoot')) taskType = 'review';
-    else if (lower.includes('email') || lower.includes('message') || lower.includes('write to') || lower.includes('notify') || lower.includes('inform') || lower.includes('reach out') || lower.includes('follow-up') || lower.includes('follow up') || lower.includes('escalate') || lower.includes('alert') || lower.includes('remind') || lower.includes('announce') || lower.includes('broadcast') || lower.includes('report to') || lower.includes('update on') || lower.includes('check in') || lower.includes('touch base')) taskType = 'communication';
-    else if (lower.includes('brief') || lower.includes('executive summary') || lower.includes('status update') || lower.includes('progress report') || lower.includes('one-pager') || lower.includes('one pager') || lower.includes('dashboard summary')) taskType = 'briefing';
-    else if (lower.includes('structure the project') || lower.includes('define the team') || lower.includes('create workstream') || lower.includes('create work breakdown') || lower.includes('define module') || lower.includes('define phase') || lower.includes('define milestone') || lower.includes('define deliverable') || lower.includes('define task') || lower.includes('create phase') || lower.includes('create milestone') || lower.includes('create deliverable') || lower.includes('create task')) taskType = 'structure';
+    // Empty assistant bubble — filled progressively by the stream
+    const assistantMessage: Message = {
+      id:        assistMsgId,
+      role:      'assistant',
+      content:   '',
+      timestamp: Date.now(),
+      taskType,
+    };
 
-    userMessage.taskType = taskType;
-
-    // Update session with user message
     setSessions((prev) =>
       prev.map((s) =>
         s.id === currentSessionId
           ? {
               ...s,
-              messages: [...s.messages, userMessage],
+              messages:  [...s.messages, userMessage, assistantMessage],
               updatedAt: Date.now(),
-              title: s.title === 'New Chat' ? messageText.slice(0, 30) : s.title,
+              title:     s.title === 'New Chat' || s.title === 'Default Session'
+                           ? messageText.slice(0, 30)
+                           : s.title,
             }
           : s
       )
@@ -201,66 +179,118 @@ const HubAssistPage: React.FC = () => {
 
     setInputText('');
     setIsLoading(true);
+    setStreamingMsgId(assistMsgId);
 
     try {
       const messages = [
         { role: 'system', content: DEFAULT_SYSTEM_PROMPT },
-        ...currentSession?.messages.map((m) => ({ role: m.role, content: m.content })) || [],
+        ...(currentSession?.messages.map((m) => ({ role: m.role, content: m.content })) ?? []),
         { role: 'user', content: messageText },
       ];
 
-      const res = await kimiApi.chat({
-        model: 'moonshot-v1-8k',
+      const response = await kimiApi.stream({
+        model:       'moonshot-v1-8k',
         messages,
         temperature: 0.7,
       });
 
-      const assistantContent = res.data?.choices?.[0]?.message?.content || 'Sorry, I could not process that request.';
+      if (!response.ok) {
+        throw new Error(
+          currentLang === 'zh'
+            ? `服务器错误 ${response.status}`
+            : `Server error ${response.status}`
+        );
+      }
 
-      const assistantMessage: Message = {
-        id: generateId(),
-        role: 'assistant',
-        content: assistantContent,
-        timestamp: Date.now(),
-        taskType,
-      };
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
 
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === currentSessionId
-            ? { ...s, messages: [...s.messages, assistantMessage], updatedAt: Date.now() }
-            : s
-        )
-      );
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') break outer;
+
+          try {
+            const chunk = JSON.parse(data);
+
+            // Bilingual server error event
+            if (chunk.error) {
+              const msg = currentLang === 'zh'
+                ? (chunk.message_zh ?? chunk.message_en)
+                : (chunk.message_en ?? chunk.message_zh ?? chunk.error);
+              throw new Error(msg);
+            }
+
+            const token = chunk.choices?.[0]?.delta?.content ?? '';
+            if (token) {
+              setSessions((prev) =>
+                prev.map((s) =>
+                  s.id === currentSessionId
+                    ? {
+                        ...s,
+                        messages: s.messages.map((m) =>
+                          m.id === assistMsgId
+                            ? { ...m, content: m.content + token }
+                            : m
+                        ),
+                      }
+                    : s
+                )
+              );
+            }
+          } catch (parseErr: any) {
+            // Only re-throw if this was a real server error (not a JSON parse blip)
+            if (parseErr.message && !parseErr.message.includes('JSON')) {
+              throw parseErr;
+            }
+          }
+        }
+      }
+
     } catch (err: any) {
-      const errorMsg = err?.response?.data?.error || err?.message || 'Connection error';
+      const errorMsg = err?.message ??
+        (currentLang === 'zh' ? '连接错误，请重试' : 'Connection error. Please try again.');
+
       addToast(errorMsg, 'error');
 
-      const errorMessage: Message = {
-        id: generateId(),
-        role: 'assistant',
-        content: `__KIMI_ERROR__: ${errorMsg}`,
-        timestamp: Date.now(),
-      };
-
+      // Replace empty assistant bubble with error
       setSessions((prev) =>
         prev.map((s) =>
           s.id === currentSessionId
-            ? { ...s, messages: [...s.messages, errorMessage], updatedAt: Date.now() }
+            ? {
+                ...s,
+                messages: s.messages.map((m) =>
+                  m.id === assistMsgId
+                    ? { ...m, content: `__KIMI_ERROR__: ${errorMsg}` }
+                    : m
+                ),
+              }
             : s
         )
       );
     }
 
     setIsLoading(false);
-  }, [inputText, isLoading, currentSessionId, currentSession, addToast]);
+    setStreamingMsgId(null);
+  }, [inputText, isLoading, currentSessionId, currentSession, addToast, currentLang]);
 
-  // ─── Session management ──────────────────────────────────────
+  // ─── Session management ────────────────────────────────────
   const createSession = useCallback(() => {
     const newSession: ChatSession = {
-      id: generateId(),
-      title: 'New Chat',
-      messages: [],
+      id:        generateId(),
+      title:     currentLang === 'zh' ? '新会话' : 'New Chat',
+      messages:  [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -268,24 +298,24 @@ const HubAssistPage: React.FC = () => {
     setCurrentSessionId(newSession.id);
     setSidebarView('sessions');
     textareaRef.current?.focus();
-  }, []);
+  }, [currentLang]);
 
   const deleteSession = useCallback((sessionId: string) => {
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    if (currentSessionId === sessionId) {
-      setCurrentSessionId('');
-    }
+    if (currentSessionId === sessionId) setCurrentSessionId('');
   }, [currentSessionId]);
 
   const clearAllSessions = useCallback(() => {
-    if (window.confirm('Delete all sessions? This cannot be undone.')) {
+    const confirmText = currentLang === 'zh'
+      ? '删除所有会话？此操作不可撤销。'
+      : 'Delete all sessions? This cannot be undone.';
+    if (window.confirm(confirmText)) {
       setSessions([]);
       setCurrentSessionId('');
       localStorage.removeItem(STORAGE_KEY);
     }
-  }, []);
+  }, [currentLang]);
 
-  // ─── Keyboard shortcuts ──────────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -293,458 +323,292 @@ const HubAssistPage: React.FC = () => {
     }
   }, [sendMessage]);
 
-  // ─── Action button handlers ──────────────────────────────────
+  // ─── Action buttons ────────────────────────────────────────
   const handleAction = (action: string) => {
     const prompts: Record<string, string> = {
-      scope: `Generate a detailed scope of work for each team module (${TEAMS.join(', ')}). Include technical requirements, deliverables, and dependencies.`,
-      deliverables: `List all deliverables for each team (${TEAMS.join(', ')}). Include status, priority, and acceptance criteria.`,
-      milestones: `Create a project milestone timeline covering all teams (${TEAMS.join(', ')}). Include dates, owners, and dependencies.`,
-      actions: `Generate action items for the project. Assign owners, priorities, and due dates.`,
-      testing: `Create a comprehensive test plan covering unit tests, integration tests, and acceptance criteria for all modules.`,
-      risks: `Identify potential project risks for each team (${TEAMS.join(', ')}). Include mitigation strategies and impact assessment.`,
-      documentation: `Create technical documentation structure for the project. Include API docs, user guides, and architecture diagrams.`,
-      diagram: `Generate a Mermaid sequence diagram showing the interaction between all teams (${TEAMS.join(', ')}).`,
-      translate: `Translate the following content to ${currentLang === 'en' ? 'Chinese' : 'English'}.`,
+      scope:         `Generate a detailed scope of work for each team module (${TEAMS.join(', ')}). Include technical requirements, deliverables, and dependencies.`,
+      deliverables:  `List all deliverables for each team (${TEAMS.join(', ')}). Include status, priority, and acceptance criteria.`,
+      milestones:    `Create a project milestone timeline covering all teams (${TEAMS.join(', ')}). Include dates, owners, and dependencies.`,
+      actions:       `Generate action items for the project. Identify key tasks, owners, priorities and due dates for each team.`,
+      risks:         `Analyse project risks across all teams (${TEAMS.join(', ')}). Include probability, impact, mitigation strategies.`,
     };
-
-    const prompt = prompts[action];
-    if (prompt) {
-      setInputText(prompt);
-      textareaRef.current?.focus();
-    }
+    if (prompts[action]) sendMessage(prompts[action]);
   };
 
-  // ─── Render ──────────────────────────────────────────────────
+  // ─── Render ────────────────────────────────────────────────
+  const sidebarWidth = 240;
+
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexShrink: 0 }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>
-            {t('tool_hub_assist')}
-          </h1>
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-            AI-powered project management assistant
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setShowHelpModal(true)} style={{
-            padding: '6px 12px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-overlay)',
-            color: 'var(--text-secondary)', border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-          }}>
-            <Icons.info size={14} /> Help
-          </button>
-          <button onClick={createSession} style={{
-            padding: '6px 12px', borderRadius: 'var(--radius-sm)', background: 'var(--accent)',
-            color: 'var(--text-inverse)', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-          }}>
-            <Icons.plus size={14} /> New Session
-          </button>
-        </div>
-      </div>
+    <div style={{ display: 'flex', height: 'calc(100vh - var(--topbar-h) - 48px)', gap: 0, borderRadius: 'var(--radius)', overflow: 'hidden', border: '1px solid var(--border)' }}>
 
-      {/* Main chat area */}
-      <div style={{ flex: 1, display: 'flex', gap: 12, minHeight: 0, overflow: 'hidden' }}>
-        {/* Chat */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-          {/* Messages */}
-          <div
-            ref={currentChatRef}
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '0 4px',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
+      {/* Sessions sidebar */}
+      <div style={{ width: sidebarWidth, flexShrink: 0, background: 'var(--bg-elevated)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid var(--border-subtle)' }}>
+          <button
+            onClick={createSession}
+            style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
           >
-            {(!currentSession || currentSession.messages.length === 0) ? (
-              /* Empty state */
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
-                <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'var(--accent-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', fontSize: 28 }}>
-                  <Icons.robot size={32} />
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
-                    HUB Assist v1.0.0
-                  </div>
-                  <div style={{ fontSize: 13, color: 'var(--text-secondary)', maxWidth: 400, lineHeight: 1.6 }}>
-                    AI-powered project management assistant. Ask me about scopes, deliverables, milestones, action items, testing plans, or any project-related questions.
-                  </div>
-                </div>
-                {/* Quick actions */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, maxWidth: 480, width: '100%' }}>
-                  {[
-                    { icon: 'target', label: 'Generate Scopes', action: 'scope' },
-                    { icon: 'package', label: 'List Deliverables', action: 'deliverables' },
-                    { icon: 'calendar', label: 'Create Milestones', action: 'milestones' },
-                    { icon: 'zap', label: 'Action Items', action: 'actions' },
-                  ].map((item) => (
-                    <button
-                      key={item.action}
-                      onClick={() => handleAction(item.action)}
-                      style={{
-                        padding: '10px 14px',
-                        borderRadius: 'var(--radius-sm)',
-                        background: 'var(--bg-overlay)',
-                        border: '1px solid var(--border)',
-                        color: 'var(--text-secondary)',
-                        fontSize: 12,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        textAlign: 'left',
-                        transition: 'all var(--transition)',
-                      }}
-                    >
-                      {React.createElement(Icons[item.icon as keyof typeof Icons] || Icons.info, { size: 14 })}
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              /* Messages */
-              currentSession.messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  style={{
-                    display: 'flex',
-                    gap: 12,
-                    padding: '12px 16px',
-                    marginBottom: 4,
-                    borderRadius: 'var(--radius-sm)',
-                    background: msg.role === 'assistant' ? 'var(--bg-overlay)' : 'transparent',
-                    borderLeft: msg.role === 'assistant' ? '3px solid var(--accent)' : '3px solid var(--blue)',
-                    animation: 'fadeUp 0.15s ease',
-                  }}
-                >
-                  {/* Avatar */}
-                  <div style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    flexShrink: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    background: msg.role === 'assistant' ? 'var(--accent-dim)' : 'var(--blue-dim)',
-                    color: msg.role === 'assistant' ? 'var(--accent)' : 'var(--blue)',
-                  }}>
-                    {msg.role === 'assistant' ? 'AI' : (user?.firstName?.[0] || 'U').toUpperCase()}
-                  </div>
-
-                  {/* Content */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
-                      {msg.role === 'assistant' ? 'HUB Assist' : user?.firstName || 'You'}
-                      {msg.taskType && msg.taskType !== 'chat' && (
-                        <span style={{
-                          marginLeft: 8,
-                          padding: '1px 6px',
-                          borderRadius: 99,
-                          fontSize: 9,
-                          fontWeight: 700,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px',
-                          background: 'var(--accent-dim)',
-                          color: 'var(--accent)',
-                        }}>
-                          {msg.taskType}
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-secondary)' }}
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-                    />
-                  </div>
-                </div>
-              ))
-            )}
-
-            {/* Loading indicator */}
-            {isLoading && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', color: 'var(--accent)' }}>
-                <div style={{
-                  width: 20, height: 20, borderRadius: '50%',
-                  border: '2px solid var(--accent-dim)',
-                  borderTopColor: 'var(--accent)',
-                  animation: 'spin 0.8s linear infinite',
-                }} />
-                <span style={{ fontSize: 12 }}>Thinking...</span>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input area */}
-          <div style={{
-            flexShrink: 0,
-            padding: '10px 0 0',
-            borderTop: '1px solid var(--border-subtle)',
-            marginTop: 8,
-          }}>
-            <div style={{
-              display: 'flex',
-              gap: 8,
-              alignItems: 'flex-end',
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              padding: '8px 12px',
-            }}>
-              <textarea
-                ref={textareaRef}
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask HUB Assist anything... (Shift+Enter for new line)"
-                rows={1}
-                style={{
-                  flex: 1,
-                  background: 'transparent',
-                  border: 'none',
-                  outline: 'none',
-                  color: 'var(--text-primary)',
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                  resize: 'none',
-                  minHeight: 20,
-                  maxHeight: 120,
-                  fontFamily: 'inherit',
-                }}
-              />
-              <button
-                onClick={() => sendMessage()}
-                disabled={!inputText.trim() || isLoading}
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: '50%',
-                  background: inputText.trim() ? 'var(--accent)' : 'var(--bg-hover)',
-                  color: inputText.trim() ? 'var(--text-inverse)' : 'var(--text-muted)',
-                  border: 'none',
-                  cursor: inputText.trim() ? 'pointer' : 'not-allowed',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                  transition: 'all var(--transition)',
-                }}
-              >
-                <Icons.send size={16} />
-              </button>
-            </div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, textAlign: 'center' }}>
-              Powered by Moonshot AI · Responses may require verification
-            </div>
-          </div>
+            <Icons.plus size={14} />
+            {currentLang === 'zh' ? '新会话' : 'New Chat'}
+          </button>
         </div>
 
-        {/* Sidebar */}
-        {sidebarOpen && (
-          <div style={{
-            width: 240,
-            flexShrink: 0,
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-          }}>
-            {/* Sidebar tabs */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)' }}>
-              <button
-                onClick={() => setSidebarView('sessions')}
-                style={{
-                  flex: 1,
-                  padding: '10px 8px',
-                  fontSize: 11,
-                  fontWeight: sidebarView === 'sessions' ? 700 : 500,
-                  color: sidebarView === 'sessions' ? 'var(--text-primary)' : 'var(--text-muted)',
-                  background: sidebarView === 'sessions' ? 'var(--bg-overlay)' : 'transparent',
-                  border: 'none',
-                  borderBottom: sidebarView === 'sessions' ? '2px solid var(--accent)' : '2px solid transparent',
-                  cursor: 'pointer',
-                }}
-              >
-                Sessions ({sessions.length})
-              </button>
-              <button
-                onClick={() => setSidebarView('actions')}
-                style={{
-                  flex: 1,
-                  padding: '10px 8px',
-                  fontSize: 11,
-                  fontWeight: sidebarView === 'actions' ? 700 : 500,
-                  color: sidebarView === 'actions' ? 'var(--text-primary)' : 'var(--text-muted)',
-                  background: sidebarView === 'actions' ? 'var(--bg-overlay)' : 'transparent',
-                  border: 'none',
-                  borderBottom: sidebarView === 'actions' ? '2px solid var(--accent)' : '2px solid transparent',
-                  cursor: 'pointer',
-                }}
-              >
-                Actions
-              </button>
-            </div>
+        {/* Tab switcher */}
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)' }}>
+          {(['sessions', 'actions'] as const).map((view) => (
+            <button
+              key={view}
+              onClick={() => setSidebarView(view)}
+              style={{ flex: 1, padding: '8px 4px', fontSize: 11, fontWeight: sidebarView === view ? 700 : 400, color: sidebarView === view ? 'var(--text-primary)' : 'var(--text-muted)', background: 'none', border: 'none', borderBottom: sidebarView === view ? '2px solid var(--accent)' : '2px solid transparent', cursor: 'pointer' }}
+            >
+              {view === 'sessions'
+                ? (currentLang === 'zh' ? '会话' : 'Sessions')
+                : (currentLang === 'zh' ? '快捷' : 'Actions')}
+            </button>
+          ))}
+        </div>
 
-            {/* Sessions list */}
-            {sidebarView === 'sessions' && (
-              <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-                {sessions.map((session) => (
+        <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
+          {sidebarView === 'sessions' ? (
+            sessions.length === 0
+              ? <div style={{ padding: '16px 8px', fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>{currentLang === 'zh' ? '暂无会话' : 'No sessions'}</div>
+              : sessions.map((s) => (
                   <div
-                    key={session.id}
-                    onClick={() => setCurrentSessionId(session.id)}
-                    style={{
-                      padding: '8px 12px',
-                      margin: '1px 6px',
-                      borderRadius: 'var(--radius-sm)',
-                      cursor: 'pointer',
-                      background: currentSessionId === session.id ? 'var(--accent-dim)' : 'transparent',
-                      color: currentSessionId === session.id ? 'var(--accent)' : 'var(--text-secondary)',
-                      fontSize: 12,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      transition: 'all var(--transition)',
-                    }}
+                    key={s.id}
+                    onClick={() => setCurrentSessionId(s.id)}
+                    style={{ padding: '8px 10px', borderRadius: 'var(--radius-sm)', marginBottom: 2, cursor: 'pointer', background: s.id === currentSessionId ? 'var(--bg-active)' : 'transparent', display: 'flex', alignItems: 'center', gap: 6, userSelect: 'none' }}
                   >
-                    <Icons.chat size={14} />
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {session.title}
-                    </span>
+                    <span style={{ flex: 1, fontSize: 12, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</span>
                     <button
-                      onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }}
-                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 2, opacity: 0.5 }}
+                      onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                      style={{ flexShrink: 0, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 2, borderRadius: 3, display: 'flex', alignItems: 'center' }}
                     >
-                      <Icons.trash size={12} />
+                      <Icons.close size={12} />
                     </button>
                   </div>
-                ))}
+                ))
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {[
+                { key: 'scope',        labelEn: 'Generate Scope',         labelZh: '生成范围' },
+                { key: 'deliverables', labelEn: 'List Deliverables',      labelZh: '列举交付物' },
+                { key: 'milestones',   labelEn: 'Create Milestones',      labelZh: '创建里程碑' },
+                { key: 'actions',      labelEn: 'Generate Action Items',  labelZh: '生成行动项' },
+                { key: 'risks',        labelEn: 'Analyse Risks',          labelZh: '分析风险' },
+              ].map((a) => (
+                <button
+                  key={a.key}
+                  onClick={() => handleAction(a.key)}
+                  disabled={isLoading}
+                  style={{ padding: '8px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-overlay)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-secondary)', cursor: isLoading ? 'not-allowed' : 'pointer', textAlign: 'left', opacity: isLoading ? 0.5 : 1 }}
+                >
+                  {currentLang === 'zh' ? a.labelZh : a.labelEn}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
-                {sessions.length === 0 && (
-                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-                    No sessions yet
-                  </div>
-                )}
-
-                {/* Session controls */}
-                <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border-subtle)', marginTop: 8 }}>
-                  <button
-                    onClick={clearAllSessions}
-                    style={{
-                      width: '100%',
-                      padding: '6px 8px',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'var(--red-dim)',
-                      color: 'var(--red)',
-                      border: 'none',
-                      fontSize: 11,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Delete All
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Actions list */}
-            {sidebarView === 'actions' && (
-              <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-                {[
-                  { icon: 'target', label: 'Generate Scopes', action: 'scope' },
-                  { icon: 'package', label: 'List Deliverables', action: 'deliverables' },
-                  { icon: 'calendar', label: 'Create Milestones', action: 'milestones' },
-                  { icon: 'zap', label: 'Action Items', action: 'actions' },
-                  { icon: 'shield', label: 'Risk Assessment', action: 'risks' },
-                  { icon: 'document', label: 'Documentation', action: 'documentation' },
-                  { icon: 'code', label: 'Sequence Diagram', action: 'diagram' },
-                  { icon: 'globe', label: 'Translate Content', action: 'translate' },
-                ].map((item) => (
-                  <button
-                    key={item.action}
-                    onClick={() => handleAction(item.action)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      width: 'calc(100% - 12px)',
-                      padding: '8px 12px',
-                      margin: '1px 6px',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-secondary)',
-                      fontSize: 12,
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'all var(--transition)',
-                    }}
-                  >
-                    {React.createElement(Icons[item.icon as keyof typeof Icons] || Icons.info, { size: 14 })}
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            )}
+        {sessions.length > 0 && (
+          <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border-subtle)' }}>
+            <button
+              onClick={clearAllSessions}
+              style={{ width: '100%', padding: '6px', fontSize: 11, color: 'var(--red)', background: 'none', border: '1px solid var(--red)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', opacity: 0.8 }}
+            >
+              {currentLang === 'zh' ? '清空所有' : 'Clear All'}
+            </button>
           </div>
         )}
       </div>
 
-      {/* Help Modal */}
+      {/* Chat area */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-base)', minWidth: 0 }}>
+
+        {/* Topbar */}
+        <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-elevated)', flexShrink: 0 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>HUB Assist</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+              {isLoading
+                ? (currentLang === 'zh' ? 'HUB 助手正在输入…' : 'HUB Assist is typing...')
+                : (currentLang === 'zh' ? '由 Moonshot AI 提供支持' : 'Powered by Moonshot AI')}
+            </div>
+          </div>
+          <button
+            onClick={() => setShowHelpModal(true)}
+            style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+            title={currentLang === 'zh' ? '帮助' : 'Help'}
+          >
+            <Icons.info size={16} />
+          </button>
+        </div>
+
+        {/* Messages */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {!currentSession || currentSession.messages.length === 0 ? (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+              {currentLang === 'zh' ? '新会话已创建，请发送消息。' : 'New session created. Send a message to begin.'}
+            </div>
+          ) : (
+            currentSession.messages.map((msg, index) => {
+              const isUser      = msg.role === 'user';
+              const isStreaming  = msg.id === streamingMsgId && isLoading;
+              const isError     = msg.content.startsWith('__KIMI_ERROR__:');
+              const displayContent = isError
+                ? msg.content.replace('__KIMI_ERROR__: ', '')
+                : msg.content;
+
+              return (
+                <div key={msg.id} style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', gap: 10 }}>
+                  {!isUser && (
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: isError ? 'var(--red-dim)' : 'var(--accent-dim)', color: isError ? 'var(--red)' : 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+                      <Icons.robot size={14} />
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      maxWidth: '75%',
+                      padding: isUser ? '10px 14px' : '12px 16px',
+                      borderRadius: isUser ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+                      background: isUser ? 'var(--accent)' : isError ? 'var(--red-dim)' : 'var(--bg-elevated)',
+                      border: isUser ? 'none' : `1px solid ${isError ? 'var(--red)' : 'var(--border)'}`,
+                      color: isUser ? 'var(--text-inverse)' : isError ? 'var(--red)' : 'var(--text-primary)',
+                      fontSize: 13,
+                      lineHeight: 1.65,
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {isUser ? (
+                      <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
+                    ) : isStreaming && msg.content === '' ? (
+                      // Waiting for first token — show thinking indicator
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)' }}>
+                        <span style={{ animation: 'pulse 1s ease infinite', display: 'inline-block' }}>●</span>
+                        <span style={{ animation: 'pulse 1s ease infinite 0.2s', display: 'inline-block' }}>●</span>
+                        <span style={{ animation: 'pulse 1s ease infinite 0.4s', display: 'inline-block' }}>●</span>
+                      </span>
+                    ) : (
+                      <>
+                        <div
+                          dangerouslySetInnerHTML={{
+                            __html: isError ? escapeHtml(displayContent) : renderMarkdown(displayContent),
+                          }}
+                        />
+                        {isStreaming && (
+                          // Blinking cursor while tokens are flowing
+                          <span style={{ display: 'inline-block', width: 2, height: 14, background: 'var(--accent)', marginLeft: 2, verticalAlign: 'middle', animation: 'pulse 0.8s ease infinite' }} />
+                        )}
+                      </>
+                    )}
+                  </div>
+                  {isUser && (
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--blue-dim)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2, fontSize: 11, fontWeight: 700 }}>
+                      {user?.firstName?.[0]?.toUpperCase() ?? user?.username?.[0]?.toUpperCase() ?? 'U'}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input area */}
+        <div style={{ padding: '12px 20px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg-elevated)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+            <textarea
+              ref={textareaRef}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isLoading}
+              placeholder={currentLang === 'zh' ? '发送消息… (Enter 发送，Shift+Enter 换行)' : 'Send a message… (Enter to send, Shift+Enter for new line)'}
+              rows={1}
+              style={{
+                flex: 1,
+                padding: '10px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                background: 'var(--bg-input)',
+                color: 'var(--text-primary)',
+                fontSize: 13,
+                resize: 'none',
+                maxHeight: 160,
+                overflow: 'auto',
+                lineHeight: 1.5,
+                transition: 'border-color var(--transition)',
+                outline: 'none',
+                opacity: isLoading ? 0.6 : 1,
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--border-focus)'; }}
+              onBlur={(e)  => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+              onInput={(e) => {
+                const el = e.currentTarget;
+                el.style.height = 'auto';
+                el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+              }}
+            />
+            <button
+              onClick={() => sendMessage()}
+              disabled={isLoading || !inputText.trim()}
+              style={{
+                width: 38, height: 38,
+                borderRadius: 'var(--radius-sm)',
+                background: isLoading || !inputText.trim() ? 'var(--bg-hover)' : 'var(--accent)',
+                border: 'none',
+                color: isLoading || !inputText.trim() ? 'var(--text-muted)' : 'var(--text-inverse)',
+                cursor: isLoading || !inputText.trim() ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+                transition: 'all var(--transition)',
+              }}
+            >
+              <Icons.send size={16} />
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, textAlign: 'center' }}>
+            {currentLang === 'zh' ? 'AI 回复仅供参考，重要决策请自行核实。' : 'AI responses are for reference only. Verify important decisions independently.'}
+          </div>
+        </div>
+      </div>
+
+      {/* Help modal */}
       {showHelpModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
-          zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
-        }}>
-          <div style={{
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 14,
-            boxShadow: 'var(--shadow-lg)', width: '100%', maxWidth: 520, maxHeight: '80vh',
-            display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'modalIn 0.25s ease',
-          }}>
-            <div style={{
-              padding: '18px 24px', borderBottom: '1px solid var(--border)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowHelpModal(false)}>
+          <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 24, maxWidth: 440, width: '90%', maxHeight: '80vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
-                <Icons.sparkles size={16} style={{ marginRight: 8, display: 'inline' }} />
-                HUB Assist Help
+                {currentLang === 'zh' ? 'HUB Assist 使用说明' : 'HUB Assist Help'}
               </h2>
-              <button onClick={() => setShowHelpModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+              <button onClick={() => setShowHelpModal(false)} style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
                 <Icons.close size={18} />
               </button>
             </div>
-            <div style={{ padding: '20px 24px', overflowY: 'auto', fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)' }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Keyboard Shortcuts</h3>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+                {currentLang === 'zh' ? '键盘快捷键' : 'Keyboard Shortcuts'}
+              </h3>
               <ul style={{ paddingLeft: 20, marginBottom: 16 }}>
-                <li><strong>Enter</strong> — Send message</li>
-                <li><strong>Shift + Enter</strong> — New line</li>
+                <li><strong>Enter</strong> — {currentLang === 'zh' ? '发送消息' : 'Send message'}</li>
+                <li><strong>Shift + Enter</strong> — {currentLang === 'zh' ? '换行' : 'New line'}</li>
               </ul>
-
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Commands</h3>
-              <ul style={{ paddingLeft: 20, marginBottom: 16 }}>
-                <li>Type <code style={{ background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>scope</code> to generate scope of work</li>
-                <li>Type <code style={{ background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>deliverables</code> to list deliverables</li>
-                <li>Type <code style={{ background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>milestones</code> to create milestones</li>
-                <li>Type <code style={{ background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>action items</code> to generate actions</li>
-                <li>Type <code style={{ background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>locale</code> to translate content</li>
-              </ul>
-
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Tips</h3>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+                {currentLang === 'zh' ? '快捷命令' : 'Quick Commands'}
+              </h3>
               <ul style={{ paddingLeft: 20 }}>
-                <li>Be specific in your requests for better results</li>
-                <li>AI responses may require verification</li>
-                <li>Sessions are saved locally in your browser</li>
+                {[
+                  ['scope',         '生成工作范围', 'Generate scope of work'],
+                  ['deliverables',  '列出交付物',   'List deliverables'],
+                  ['milestones',    '创建里程碑',   'Create milestones'],
+                  ['action items',  '生成行动项',   'Generate action items'],
+                  ['risks',         '分析风险',     'Analyse project risks'],
+                ].map(([cmd, zh, en]) => (
+                  <li key={cmd}>
+                    <code style={{ background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{cmd}</code>
+                    {' — '}
+                    {currentLang === 'zh' ? zh : en}
+                  </li>
+                ))}
               </ul>
             </div>
           </div>
