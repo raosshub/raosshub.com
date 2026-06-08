@@ -1,25 +1,40 @@
 import { create } from 'zustand';
 import { configApi } from '@/utils/api';
 
+// ─── Identity interface ────────────────────────────────────────────────────────
+// Mirrors ProjectConfig.identity from types/index.ts.
+// siteTitle sets the HTML <title> tag independently of projectName.
 export interface ProjectIdentity {
+  // Basic Information
   projectName: string;
   companyName: string;
   productCode: string;
   status: string;
-  description: string;
+  siteTitle: string;         // HTML <title> tag — independent of projectName
+  description: string;       // stored for Tab 3 compat, not shown in Tab 1
+
+  // Branding
   logoUrl: string;
   faviconUrl: string;
   primaryColor: string;
+
+  // Product Visuals
   productImages: string[];
   productModelUrl: string;
+
+  // Contact & Links
   contactEmail: string;
   websiteUrl: string;
   referenceLinks: string;
-  copyrightNotice: string;
-  trademarkNotice: string;
-  patentNotice: string;
-  icpZh: string;
-  icpEn: string;
+
+  // Intellectual Property & Compliance
+  copyrightNotice: string;   // sidebar footer line 5
+  trademarkNotice: string;   // sidebar footer line 4
+  patentNotice: string;      // sidebar footer line 3
+  icpZh: string;             // sidebar footer line 2 — only when lang = ZH
+  icpEn: string;             // sidebar footer line 2 — all other languages
+
+  // Legacy v2 compat (do not remove — backend JSONB may contain these)
   chip: string;
   name: string;
   version: string;
@@ -43,10 +58,11 @@ const defaultIdentity: ProjectIdentity = {
   companyName: '',
   productCode: '',
   status: '',
+  siteTitle: '',
   description: '',
   logoUrl: '',
   faviconUrl: '',
-  primaryColor: '',
+  primaryColor: '#3fb950',
   productImages: [],
   productModelUrl: '',
   contactEmail: '',
@@ -69,59 +85,55 @@ const defaultIdentity: ProjectIdentity = {
 };
 
 const BREADCRUMB_MAP: Record<string, string> = {
-  '/': 'Overview',
-  '/settings': 'Settings',
-  '/assistant': 'HUB Assist',
+  '/':             'Overview',
+  '/settings':     'Settings',
+  '/assistant':    'HUB Assist',
   '/activity-log': 'Activity Log',
-  '/admin/setup': 'Admin / Setup',
+  '/admin/setup':  'Admin / Setup',
 };
 
-export const useConfigStore = create<ConfigState>((set, get) => ({
+export const useConfigStore = create<ConfigState>((set) => ({
   identity: { ...defaultIdentity },
   loaded: false,
 
   load: async () => {
     try {
       const res = await configApi.get();
-      const id = res.data?.data?.identity || {};
+      const id  = res.data?.data?.identity || {};
       const merged = { ...defaultIdentity, ...id };
       set({ identity: merged, loaded: true });
 
-      // Update document title
-      if (merged.projectName) {
-        document.title = merged.projectName;
+      // siteTitle takes priority over projectName for the browser tab title.
+      // Fallback chain: siteTitle → projectName → default
+      const title = merged.siteTitle || merged.projectName;
+      if (title) document.title = title;
+
+      // Apply favicon if configured
+      if (merged.faviconUrl) {
+        const link =
+          (document.querySelector("link[rel='icon']") as HTMLLinkElement) ||
+          Object.assign(document.createElement('link'), { rel: 'icon' });
+        link.href = merged.faviconUrl;
+        document.head.appendChild(link);
       }
 
-      // Update favicon
-      if (merged.faviconUrl) {
-        let link = document.querySelector("link[rel*='icon']") as HTMLLinkElement;
-        if (!link) {
-          link = document.createElement('link');
-          link.rel = 'icon';
-          link.type = 'image/x-icon';
-          document.head.appendChild(link);
-        }
-        link.href = merged.faviconUrl;
-      }
-    } catch {
+    } catch (e) {
+      console.warn('[Config] Failed to load:', e);
       set({ loaded: true });
     }
   },
 
-  getBreadcrumb: (pathname: string) => {
-    // Check direct matches first
+  getBreadcrumb: (pathname) => {
+    // Exact match first
     if (BREADCRUMB_MAP[pathname]) return BREADCRUMB_MAP[pathname];
-
-    // Team pages
+    // Team routes: /team/:teamId
     if (pathname.startsWith('/team/')) {
-      const teamId = pathname.replace('/team/', '');
-      const teamNames: Record<string, string> = {
-        react: 'React App', pcba: 'PCBA', firmware: 'Firmware',
-        tft: 'TFT', router: 'Router', charger: 'Charger', shell: 'Shell',
-      };
-      return `Teams / ${teamNames[teamId] || teamId}`;
+      const teamId = pathname.split('/')[2] || '';
+      return teamId.charAt(0).toUpperCase() + teamId.slice(1);
     }
-
-    return 'Dashboard';
+    // Fallback: capitalize last path segment
+    const segments = pathname.split('/').filter(Boolean);
+    const last = segments[segments.length - 1] || '';
+    return last.charAt(0).toUpperCase() + last.slice(1) || 'Hub';
   },
 }));

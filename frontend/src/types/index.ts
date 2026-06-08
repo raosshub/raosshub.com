@@ -5,9 +5,30 @@
  * When you change a field in a Java class, update the matching interface below.
  * The comment on each interface states the exact Java source file to check.
  *
- * Java DTOs live in: backend/src/main/java/com/raosshub/dto/
- * Java entities live in: backend/src/main/java/com/raosshub/entity/
+ * Java DTOs  → backend/src/main/java/com/raosshub/dto/
+ * Java entities → backend/src/main/java/com/raosshub/entity/
  */
+
+// ─── Status options (shared by ProjectIdentityTab + AppLayout) ────────────────
+// When adding a new status value: add here, and add the matching
+// ui_message keys (status_<value>) to schema.sql for EN + ZH.
+export const STATUS_OPTIONS = [
+  { value: 'planning',    en: 'Planning',        zh: '规划中'   },
+  { value: 'development', en: 'In Development',  zh: '开发中'   },
+  { value: 'prototype',   en: 'Prototype',       zh: '原型阶段' },
+  { value: 'production',  en: 'Production',      zh: '生产中'   },
+  { value: 'maintenance', en: 'Maintenance',     zh: '维护中'   },
+  { value: 'completed',   en: 'Completed',       zh: '已完成'   },
+] as const;
+
+export type StatusValue = typeof STATUS_OPTIONS[number]['value'];
+
+/** Resolves a status value to its display label for the active language. */
+export function getStatusLabel(status: string, lang: string): string {
+  const opt = STATUS_OPTIONS.find((o) => o.value === status);
+  if (!opt) return status;
+  return lang === 'zh' ? opt.zh : opt.en;
+}
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 // Java: com/raosshub/dto/UserDto.java
@@ -67,22 +88,45 @@ export interface Team {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 // Java: com/raosshub/entity/ProjectConfig.java (JSONB column)
-// Mirrors the JSON structure stored in project_configs.config
+// Mirrors the JSON structure stored in project_configs.config.
+// siteTitle: sets the HTML <title> tag, independent of projectName.
 export interface ProjectConfig {
   identity?: {
-    name: string;
-    chip: string;
-    version: string;
-    status: string;
-    description: string;
-    startDate: string;
-    targetDate: string;
-    updatedLabel: string;
-    githubUrl: string;
-    refLink1: string;
-    refLink2: string;
-    icpEn: string;
-    icpZh: string;
+    // Basic Information
+    projectName: string;       // sidebar brand name, line 1
+    productCode: string;       // sidebar brand subtitle, rendered in primaryColor
+    status: StatusValue | string;  // topbar centre badge
+    companyName: string;       // email sending only
+    siteTitle: string;         // HTML <title> tag (independent of projectName)
+    description?: string;      // moved to Tab 3 Dashboard Settings — stored here for compat
+    // Branding
+    logoUrl: string;           // sidebar brand logo
+    faviconUrl: string;        // browser tab icon
+    primaryColor: string;      // productCode text color + email
+    // Product Visuals
+    productImages: string[];   // Overview dashboard
+    productModelUrl: string;   // Overview dashboard 3D model
+    // Contact & Links
+    contactEmail: string;      // email sending only
+    websiteUrl: string;        // email sending only
+    referenceLinks: string;    // admin use only
+    // Intellectual Property & Compliance
+    copyrightNotice: string;   // sidebar footer line 5
+    trademarkNotice: string;   // sidebar footer line 4
+    patentNotice: string;      // sidebar footer line 3
+    icpZh: string;             // sidebar footer line 2 — shown when lang = ZH
+    icpEn: string;             // sidebar footer line 2 — shown for all other languages
+    // Legacy v2 compat fields (do not remove — used by backend JSONB)
+    name?: string;
+    chip?: string;
+    version?: string;
+    refLink1?: string;
+    refLink2?: string;
+    githubUrl?: string;
+    startDate?: string;
+    targetDate?: string;
+    updatedLabel?: string;
+    icpEn_legacy?: string;
   };
   branding?: {
     logoFile: string;
@@ -180,8 +224,7 @@ export interface TeamFile {
 
 // ─── Audit ────────────────────────────────────────────────────────────────────
 // Java: com/raosshub/entity/AuditLog.java
-// Note: detailEn and detailZh are the bilingual columns; the frontend
-// should display the one matching the current language.
+// detailEn and detailZh: show the one matching the active language.
 export interface AuditLogEntry {
   id: number;
   username: string;
