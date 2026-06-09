@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useImperativeHandle, useRef } 
 import { useI18nStore }         from '@/stores/useI18nStore';
 import { useNotificationStore } from '@/stores/useNotificationStore';
 import { useConfigStore }       from '@/stores/useConfigStore';
-import { configApi }            from '@/utils/api';
+import { configApi, kimiApi }   from '@/utils/api';
 
 export interface NotificationsTabHandle {
   save: () => void; reset: () => void;
@@ -69,7 +69,7 @@ interface Props { onStateChange?: (hasChanges: boolean, saving: boolean) => void
 const NotificationsTab = React.forwardRef<NotificationsTabHandle, Props>(
   ({ onStateChange }, ref) => {
 
-  const { t }        = useI18nStore();
+  const { t, currentLang, languages } = useI18nStore();
   const { addToast } = useNotificationStore();
   const { identity } = useConfigStore();
 
@@ -79,6 +79,8 @@ const NotificationsTab = React.forwardRef<NotificationsTabHandle, Props>(
   const [saving,         setSaving]         = useState(false);
   const [hasChanges,     setHasChanges]     = useState(false);
   const [showPreview,    setShowPreview]    = useState(false);
+  const [translating,    setTranslating]    = useState(false);
+  const [translationStatus, setTranslationStatus] = useState('');
   const ndaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => { onStateChange?.(hasChanges, saving); }, [hasChanges, saving, onStateChange]);
@@ -91,7 +93,8 @@ const NotificationsTab = React.forwardRef<NotificationsTabHandle, Props>(
       const notif = (res.data?.data?.notifications || {}) as Record<string, any>;
       const loaded: NotifForm = {
         showVersion:          notif.showVersion !== false,
-        ndaText:              nda.text || '',
+        // text_en is the Option B key; fall back to legacy text for existing data
+        ndaText:              (nda.text_en as string) || (nda.text as string) || '',
         forceOnVersionChange: !!nda.forceOnVersionChange,
       };
       setForm(loaded); setOriginal(loaded);
@@ -110,17 +113,84 @@ const NotificationsTab = React.forwardRef<NotificationsTabHandle, Props>(
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
+      // Build NDA payload — always keyed by language (text_en is the master)
+      const ndaPayload: Record<string, unknown> = {
+        text_en:              form.ndaText,
+        forceOnVersionChange: form.forceOnVersionChange,
+      };
+
+      // Auto-translate to every active non-EN language if Kimi is configured
+      const nonEnLangs = languages.filter(l => l.isActive && l.code !== 'en');
+
+      if (nonEnLangs.length > 0 && form.ndaText.trim()) {
+        // Check Kimi key before attempting translation
+        const cfgRes  = await configApi.get();
+        const kimiKey = (cfgRes.data?.data?.integrations?.kimiApiKey as string) || '';
+
+        if (!kimiKey.trim()) {
+          addToast(
+            t('tab6_translate_no_kimi', 'Kimi API key not configured — NDA saved in EN only'),
+            'info'
+          );
+        } else {
+          setTranslating(true);
+          const failedLangs: string[] = [];
+
+          for (let i = 0; i < nonEnLangs.length; i++) {
+            const lang = nonEnLangs[i];
+            setTranslationStatus(
+              t('tab6_translating', 'Translating to {lang}…')
+                .replace('{lang}', lang.nameNative || lang.name) +
+              ` (${i + 1}/${nonEnLangs.length})`
+            );
+
+            try {
+              const res = await kimiApi.chat({
+                model:      'moonshot-v1-32k',
+                max_tokens: 4000,
+                messages:   [{
+                  role:    'user',
+                  content: `Translate the following markdown NDA text to ${lang.name} (${lang.code}). ` +
+                           `Return ONLY the translated markdown text, preserving all markdown ` +
+                           `formatting exactly. No explanation or preamble:\n\n${form.ndaText}`,
+                }],
+              });
+              const translated = ((res.data?.choices?.[0]?.message?.content) as string || '').trim();
+              if (translated) {
+                ndaPayload[`text_${lang.code}`] = translated;
+              } else {
+                failedLangs.push(lang.nameNative || lang.name);
+              }
+            } catch {
+              failedLangs.push(lang.nameNative || lang.name);
+            }
+          }
+
+          setTranslating(false);
+          setTranslationStatus('');
+
+          if (failedLangs.length > 0) {
+            addToast(
+              t('tab6_translate_partial', 'Translation failed for: {langs}')
+                .replace('{langs}', failedLangs.join(', ')),
+              'warning'
+            );
+          }
+        }
+      }
+
       await configApi.save({
         notifications: { showVersion: form.showVersion },
-        nda:           { text: form.ndaText, forceOnVersionChange: form.forceOnVersionChange },
+        nda:           ndaPayload,
       });
+
       setOriginal(form); setHasChanges(false);
       addToast(t('tab6_save_success', 'Notification settings saved'), 'success');
     } catch (e: any) {
       addToast(t('tab6_save_fail', 'Save failed') + ': ' + e.message, 'error');
     }
     setSaving(false);
-  }, [form, addToast, t]);
+  }, [form, languages, addToast, t]);
 
   const handleReset = useCallback(() => {
     if (!window.confirm(t('admin_discard_changes', 'Discard all unsaved changes?'))) return;
@@ -228,6 +298,13 @@ const NotificationsTab = React.forwardRef<NotificationsTabHandle, Props>(
             style={{ minHeight: 200, padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-overlay)', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}
             dangerouslySetInnerHTML={{ __html: form.ndaText.trim() ? renderMarkdown(form.ndaText) : `<span style="color:var(--text-muted);font-style:italic">${t('tab6_nda_preview_empty', 'Nothing to preview — add content in Edit mode.')}</span>` }}
           />
+        )}
+        {translating && translationStatus && (
+          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', flexShrink: 0,
+              animation: 'spin 0.8s linear infinite' }} />
+            {translationStatus}
+          </div>
         )}
       </div>
 

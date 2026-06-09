@@ -28,7 +28,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout }                          = useAuthStore();
   const { t, currentLang, setLanguage, languages } = useI18nStore();
   const { theme, toggleTheme, sidebarCollapsed, toggleSidebar } = useThemeStore();
-  const { identity, loaded, load, getBreadcrumb } = useConfigStore();
+  const { identity, notifications, loaded, load, getBreadcrumb } = useConfigStore();
 
   const [teams, setTeams]           = React.useState<Team[]>([]);
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -155,7 +155,16 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </div>
         </div>
 
-        {/* Footer block — IP lines 2-5 */}
+        {/* Footer — Line 1: Document Version (gated by Tab 6 showVersion toggle) */}
+        {!sidebarCollapsed && notifications?.showVersion !== false && identity.version && (
+          <div style={{ background: 'var(--sidebar-bg)', border: '1px solid var(--sidebar-border)', borderRadius: 'var(--radius)', padding: '8px 14px', flexShrink: 0 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', opacity: 0.9 }}>
+              {t('version_prefix', 'Document Version')} {identity.version}
+            </div>
+          </div>
+        )}
+
+        {/* Footer — Lines 2-5: IP notices */}
         {!sidebarCollapsed && (identity.icpZh || identity.icpEn || identity.patentNotice || identity.trademarkNotice || identity.copyrightNotice || identity.companyName) && (
           <div style={{ background: 'var(--sidebar-bg)', border: '1px solid var(--sidebar-border)', borderRadius: 'var(--radius)', padding: '10px 14px', flexShrink: 0 }}>
             {icpLine           && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2, opacity: 0.8 }}>{icpLine}</div>}

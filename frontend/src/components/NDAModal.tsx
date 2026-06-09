@@ -36,7 +36,7 @@ function renderMarkdown(md: string): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 const NDAModal: React.FC = () => {
-  const { t }            = useI18nStore();
+  const { t, currentLang }  = useI18nStore();
   const { acceptNda, logout } = useAuthStore();
   const { nda }          = useConfigStore();
   const [checked, setChecked] = useState(false);
@@ -46,7 +46,13 @@ const NDAModal: React.FC = () => {
     await acceptNda();
   }, [checked, acceptNda]);
 
-  const hasAdminNda = !!(nda?.text?.trim());
+  // Language-aware NDA text lookup.
+  // Priority: text_{currentLang} → text_en → text (backward compat) → empty (shows default)
+  const ndaRecord  = nda as Record<string, unknown>;
+  const ndaText    = ((ndaRecord[`text_${currentLang}`] as string | undefined) || '').trim()
+                  || ((ndaRecord['text_en']              as string | undefined) || '').trim()
+                  || (nda?.text || '').trim();
+  const hasAdminNda = ndaText.length > 0;
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -71,7 +77,7 @@ const NDAModal: React.FC = () => {
         <div style={{ padding: '24px 28px', overflowY: 'auto', maxHeight: '45vh', fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)' }}>
           {hasAdminNda ? (
             // Admin-authored Markdown rendered as HTML
-            <div dangerouslySetInnerHTML={{ __html: renderMarkdown(nda!.text!) }} />
+            <div dangerouslySetInnerHTML={{ __html: renderMarkdown(ndaText) }} />
           ) : (
             // Default static content — shown until admin configures NDA text in Admin Setup → Integrations
             <ol style={{ paddingLeft: 20 }}>

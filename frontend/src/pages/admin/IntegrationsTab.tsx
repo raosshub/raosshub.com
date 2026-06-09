@@ -162,7 +162,7 @@ const IntegrationsTab = React.forwardRef<IntegrationsTabHandle, Props>(
   const handleSmtpTest = useCallback(async () => {
     setSmtpTestState('testing'); setSmtpTestMsg('');
     try {
-      const res = await configApi.testSmtp();
+      const res = await configApi.testSmtp(form.smtp as unknown as Record<string, unknown>);
       const d   = res.data?.data as { success: boolean; message: string };
       if (d?.success) { setSmtpTestState('ok');   setSmtpTestMsg(d.message || ''); }
       else            { setSmtpTestState('fail');  setSmtpTestMsg(d?.message || 'Connection failed'); }

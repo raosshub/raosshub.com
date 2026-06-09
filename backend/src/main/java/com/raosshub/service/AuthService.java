@@ -65,13 +65,12 @@ public class AuthService {
             user.setLastLogin(Instant.now());
             userRepository.save(user);
 
-            // Clear NDA acceptance — forces re-acceptance on every login
-            boolean forceOnVersion = false;
-            try {
-                Object ndaCfg = configService.getConfig().get("nda");
-                if (ndaCfg instanceof java.util.Map<?,?> m)
-                    forceOnVersion = Boolean.TRUE.equals(m.get("forceOnVersionChange"));
-            } catch (Exception ignored) {}
+            // Clear NDA acceptance — forces re-acceptance on every login unless
+            // forceOnVersionChange is ON, in which case GET /auth/nda/status checks
+            // whether the accepted version matches the current project version.
+            Object ndaCfg = configService.getConfig().get("nda");
+            boolean forceOnVersion = (ndaCfg instanceof java.util.Map<?,?> m)
+                && Boolean.TRUE.equals(m.get("forceOnVersionChange"));
             if (!forceOnVersion) {
                 ndaAgreementRepository.findByUserId(user.getId())
                     .ifPresent(ndaAgreementRepository::delete);

@@ -2,6 +2,7 @@ package com.raosshub.config;
 
 import com.raosshub.entity.User;
 import com.raosshub.repository.UserRepository;
+import com.raosshub.repository.NdaAgreementRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -26,9 +27,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
-    private final UserRepository  userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JdbcTemplate    jdbcTemplate;
+    private final UserRepository          userRepository;
+    private final NdaAgreementRepository  ndaAgreementRepository;
+    private final PasswordEncoder         passwordEncoder;
+    private final JdbcTemplate            jdbcTemplate;
 
     private static final String UPSERT =
         "INSERT INTO ui_messages (key, language_code, value) VALUES (?, ?, ?) " +
@@ -36,6 +38,10 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        // Schema migration — idempotent, safe to run on every startup
+        jdbcTemplate.execute(
+            "ALTER TABLE nda_agreements ADD COLUMN IF NOT EXISTS accepted_version VARCHAR(50)"
+        );
         ensureAdminUser();
         ensureDefaultUser();
         seedEnUiMessages();
@@ -44,19 +50,21 @@ public class DataInitializer implements CommandLineRunner {
     // ─── Users ────────────────────────────────────────────────────────────────
 
     private void ensureAdminUser() {
-        if (userRepository.findByUsername("admin").isPresent()) return;
-        User admin = new User();
-        admin.setUsername("admin");
-        admin.setEmail("admin@raoss.com");
-        admin.setFirstName("System");
-        admin.setLastName("Administrator");
-        admin.setRole("superadmin");
-        admin.setTeams(new String[]{"all"});
-        admin.setCanViewActivity(true);
-        admin.setIsActive(true);
+        User admin = userRepository.findByUsername("admin").orElse(null);
+        if (admin == null) {
+            admin = new User();
+            admin.setUsername("admin");
+            admin.setEmail("admin@raoss.com");
+            admin.setFirstName("System");
+            admin.setLastName("Administrator");
+            admin.setRole("superadmin");
+            admin.setTeams(new String[]{"all"});
+            admin.setCanViewActivity(true);
+            admin.setIsActive(true);
+        }
         admin.setPasswordHash(passwordEncoder.encode("RaossAdmin2024!"));
         userRepository.save(admin);
-        log.info("[Init] Admin user created");
+        log.info("[Init] Admin user ready");
     }
 
     private void ensureDefaultUser() {
@@ -117,12 +125,11 @@ public class DataInitializer implements CommandLineRunner {
         en("topbar_hub_label","HUB Dashboard");
 
         // ── Tools ─────────────────────────────────────────────────────────────
-        en("tool_theme_light",   "Light Mode");
-        en("tool_theme_dark",    "Dark Mode");
-        en("tool_hub_assist",    "HUB Assist");
-        en("tool_activity_log",  "Activity Log");
-        en("tool_admin_setup",   "Admin Setup");
-        en("tool_sign_out",      "Sign Out");
+        en("tool_theme_light",  "Light Mode");
+        en("tool_theme_dark",   "Dark Mode");
+        en("tool_hub_assist",   "HUB Assist");
+        en("tool_activity_log", "Activity Log");
+        en("tool_sign_out",     "Sign Out");
         en("tool_project_config","Project Config");
 
         // ── NDA ───────────────────────────────────────────────────────────────
@@ -427,6 +434,20 @@ public class DataInitializer implements CommandLineRunner {
         en("int_smtp_ssl_required", "SSL (required for port 465)");
         en("int_smtp_starttls_note","STARTTLS (recommended)");
 
+        // ── Tab 7 — NDA editor ────────────────────────────────────────────
+        en("int_nda_section",       "NDA Agreement");
+        en("int_nda_section_desc",  "Appears in the NDA modal after login. Supports Markdown: **bold**, *italic*, # Heading, - Bullet");
+        en("int_nda_edit_btn",      "Edit");
+        en("int_nda_preview_btn",   "Preview");
+        en("int_nda_placeholder",   "# Non-Disclosure Agreement\n\nAll information is strictly confidential.");
+        en("int_nda_preview_empty", "Nothing to preview — add content in Edit mode.");
+        en("int_nda_bold",   "B");
+        en("int_nda_italic", "I");
+        en("int_nda_h1",     "H1");
+        en("int_nda_h2",     "H2");
+        en("int_nda_h3",     "H3");
+        en("int_nda_bullet", "•");
+
         // ── Tab 6 — Notification Settings ─────────────────────────────────
         en("tab6_version_section",       "Version Display");
         en("tab6_version_desc",          "Control whether the project version number is visible to all users.");
@@ -507,6 +528,11 @@ public class DataInitializer implements CommandLineRunner {
         en("tab1_patent",                "Patent Notice");
         en("tab1_trademark",             "Trademark Notice");
         en("tab1_copyright",             "Copyright Notice");
+
+
+        en("tab6_translate_no_kimi",  "Kimi API key not configured \u2014 NDA saved in EN only");
+        en("tab6_translating",        "Translating to {lang}\u2026");
+        en("tab6_translate_partial",  "Translation failed for: {langs}");
 
         log.info("[Init] EN UI message seeds applied");
     }

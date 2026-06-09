@@ -125,7 +125,7 @@ export const configApi = {
   save: (config: Record<string, unknown>) => api.post('/config', config),
 
   // SMTP test — backend opens TCP socket to host:port and returns { success, message }
-  testSmtp:     () => api.post('/config/smtp/test'),
+  testSmtp:     (smtp: Record<string, unknown>) => api.post('/config/smtp/test', { smtp }),
 
   // Danger Zone — confirmation tokens must match server-side check exactly
   resetData:    () => api.post('/config/reset-data',    { confirm: 'RESET' }),

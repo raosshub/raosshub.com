@@ -38,10 +38,17 @@ export interface NdaConfig {
   forceOnVersionChange?: boolean;
 }
 
+// Controls version line (Line 1) in sidebar footer and version history
+// section in OverviewPage. Set from Tab 6 Notification Settings.
+export interface NotificationsConfig {
+  showVersion?: boolean;
+}
+
 interface ConfigState {
-  identity: ProjectIdentity;
-  nda:      NdaConfig;
-  loaded:   boolean;
+  identity:      ProjectIdentity;
+  nda:           NdaConfig;
+  notifications: NotificationsConfig;
+  loaded:        boolean;
   load:             () => Promise<void>;
   getBreadcrumb:    (pathname: string) => string;
 }
@@ -64,18 +71,20 @@ const BREADCRUMB_MAP: Record<string, string> = {
 };
 
 export const useConfigStore = create<ConfigState>((set, get) => ({
-  identity: { ...defaultIdentity },
-  nda:      {},
-  loaded:   false,
+  identity:      { ...defaultIdentity },
+  nda:           {},
+  notifications: {},
+  loaded:        false,
 
   load: async () => {
     try {
-      const res    = await configApi.get();
-      const id     = (res.data?.data?.identity || {}) as Partial<ProjectIdentity>;
-      const nda    = (res.data?.data?.nda       || {}) as NdaConfig;
-      const merged = { ...defaultIdentity, ...id };
+      const res           = await configApi.get();
+      const id            = (res.data?.data?.identity      || {}) as Partial<ProjectIdentity>;
+      const nda           = (res.data?.data?.nda           || {}) as NdaConfig;
+      const notifications = (res.data?.data?.notifications || {}) as NotificationsConfig;
+      const merged        = { ...defaultIdentity, ...id };
 
-      set({ identity: merged, nda, loaded: true });
+      set({ identity: merged, nda, notifications, loaded: true });
 
       // siteTitle takes priority; fall back to projectName
       const title = merged.siteTitle || merged.projectName;
