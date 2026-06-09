@@ -35,6 +35,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository resetTokenRepository;
     private final NdaAgreementRepository ndaAgreementRepository;
+    private final ConfigService configService;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogService auditLogService;
 
@@ -65,8 +66,16 @@ public class AuthService {
             userRepository.save(user);
 
             // Clear NDA acceptance — forces re-acceptance on every login
-            ndaAgreementRepository.findByUserId(user.getId())
-                .ifPresent(ndaAgreementRepository::delete);
+            boolean forceOnVersion = false;
+            try {
+                Object ndaCfg = configService.getConfig().get("nda");
+                if (ndaCfg instanceof java.util.Map<?,?> m)
+                    forceOnVersion = Boolean.TRUE.equals(m.get("forceOnVersionChange"));
+            } catch (Exception ignored) {}
+            if (!forceOnVersion) {
+                ndaAgreementRepository.findByUserId(user.getId())
+                    .ifPresent(ndaAgreementRepository::delete);
+            }
 
             String accessToken  = tokenProvider.generateAccessToken(authentication);
             String refreshToken = tokenProvider.generateRefreshToken(authentication);

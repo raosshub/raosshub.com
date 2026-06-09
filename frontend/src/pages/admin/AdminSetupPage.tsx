@@ -2,63 +2,66 @@ import React, { useState, useRef, useCallback } from 'react';
 import { useAuthStore }    from '@/stores/useAuthStore';
 import { useI18nStore }    from '@/stores/useI18nStore';
 import { Icons }           from '@/components/icons';
-import ProjectIdentityTab, { type ProjectIdentityTabHandle } from './ProjectIdentityTab';
-import LanguageTranslationTab from './LanguageTranslationTab';
+import ProjectIdentityTab,   { type ProjectIdentityTabHandle }   from './ProjectIdentityTab';
+import LanguageTranslationTab                                     from './LanguageTranslationTab';
+import DashboardSettingsTab, { type DashboardSettingsTabHandle } from './DashboardSettingsTab';
+import NotificationsTab,     { type NotificationsTabHandle }     from './NotificationsTab';
+import IntegrationsTab,      { type IntegrationsTabHandle }      from './IntegrationsTab';
+import type { Language } from '@/types';
 
-type SetupTab =
+export type SetupTab =
   | 'identity' | 'language' | 'dashboard' | 'users' | 'teams'
   | 'notifications' | 'integrations' | 'hubassist' | 'auditlog';
 
+export interface TabContext {
+  reason?:           'kimi_required';
+  pendingDefaultLang?: Language;
+  kimiVerified?:     boolean;
+}
+
 interface TabDef {
-  id: SetupTab;
-  icon: keyof typeof Icons;
-  labelEn: string;
-  labelZh: string;
-  descEn:  string;
-  descZh:  string;
-  status:  'live' | 'coming';
+  id: SetupTab; icon: keyof typeof Icons;
+  labelKey: string; labelFb: string;
+  descKey: string; descFb: string;
+  status: 'live' | 'coming';
 }
 
 const TABS: TabDef[] = [
   { id: 'identity',      icon: 'cube',    status: 'live',
-    labelEn: 'Project Identity & Branding', labelZh: '项目身份与品牌',
-    descEn:  'Name, branding, product visuals, contact, IP notices',
-    descZh:  '项目名称、品牌、产品视觉、联系方式、知识产权' },
+    labelKey: 'tab_identity_label',      labelFb: 'Project Identity & Branding',
+    descKey:  'tab_identity_desc',       descFb:  'Name, branding, product visuals, contact, IP notices' },
   { id: 'language',      icon: 'layers',  status: 'live',
-    labelEn: 'Language & Translation',      labelZh: '语言与翻译',
-    descEn:  'Default language, add languages, AI translation',
-    descZh:  '默认语言、添加语言、AI 翻译' },
-  { id: 'dashboard',     icon: 'monitor', status: 'coming',
-    labelEn: 'Dashboard Settings',          labelZh: '仪表盘设置',
-    descEn:  'Executive summary, specs, timeline, responsibility, actions',
-    descZh:  '执行摘要、规格、时间线、职责矩阵、行动项' },
+    labelKey: 'tab_language_label',      labelFb: 'Language & Translation',
+    descKey:  'tab_language_desc',       descFb:  'Default language, add languages, AI translation' },
+  { id: 'dashboard',     icon: 'monitor', status: 'live',
+    labelKey: 'tab_dashboard_label',     labelFb: 'Dashboard Settings',
+    descKey:  'tab_dashboard_desc',      descFb:  'Executive summary, specs, timeline, responsibility' },
   { id: 'users',         icon: 'users',   status: 'coming',
-    labelEn: 'Users',                       labelZh: '用户管理',
-    descEn:  'Add, edit, deactivate users, roles, permissions',
-    descZh:  '添加、编辑、停用用户，角色与权限管理' },
+    labelKey: 'tab_users_label',         labelFb: 'Users',
+    descKey:  'tab_users_desc',          descFb:  'Add, edit, deactivate users, roles, permissions' },
   { id: 'teams',         icon: 'package', status: 'coming',
-    labelEn: 'Teams',                       labelZh: '团队管理',
-    descEn:  'Add, edit, reorder teams, assign icons',
-    descZh:  '添加、编辑、排序团队，分配图标' },
-  { id: 'notifications', icon: 'bell',    status: 'coming',
-    labelEn: 'Notification Settings',       labelZh: '通知设置',
-    descEn:  'Version display, NDA text & enforcement',
-    descZh:  '版本展示、NDA 内容与执行设置' },
-  { id: 'integrations',  icon: 'link',    status: 'coming',
-    labelEn: 'Integrations',                labelZh: '集成配置',
-    descEn:  'Kimi API key, email SMTP, Danger Zone',
-    descZh:  'Kimi API 密钥、邮件 SMTP、危险操作区' },
+    labelKey: 'tab_teams_label',         labelFb: 'Teams',
+    descKey:  'tab_teams_desc',          descFb:  'Add, edit, reorder teams, assign icons' },
+  { id: 'notifications', icon: 'bell',    status: 'live',
+    labelKey: 'tab_notifications_label', labelFb: 'Notification Settings',
+    descKey:  'tab_notifications_desc',  descFb:  'Version display, NDA text & enforcement' },
+  { id: 'integrations',  icon: 'link',    status: 'live',
+    labelKey: 'tab_integrations_label',  labelFb: 'Integrations',
+    descKey:  'tab_integrations_desc',   descFb:  'Kimi API key, email SMTP, Danger Zone' },
   { id: 'hubassist',     icon: 'robot',   status: 'coming',
-    labelEn: 'Hub Assist',                  labelZh: 'Hub 助手',
-    descEn:  'Kimi behavior, prompt templates, rate limits',
-    descZh:  'Kimi 行为配置、提示词模板、请求限制' },
+    labelKey: 'tab_hubassist_label',     labelFb: 'Hub Assist',
+    descKey:  'tab_hubassist_desc',      descFb:  'Kimi behavior, prompt templates, rate limits' },
   { id: 'auditlog',      icon: 'clock',   status: 'coming',
-    labelEn: 'Audit Log',                   labelZh: '审计日志',
-    descEn:  'View-only activity trail',
-    descZh:  '只读活动记录' },
+    labelKey: 'tab_auditlog_label',      labelFb: 'Audit Log',
+    descKey:  'tab_auditlog_desc',       descFb:  'View-only activity trail' },
 ];
 
-function ComingSoonCard({ tab, isZh }: { tab: TabDef; isZh: boolean }) {
+const TABS_WITH_SAVE = new Set<SetupTab>([
+  'identity', 'dashboard', 'notifications', 'integrations'
+]);
+
+function ComingSoonCard({ tab }: { tab: TabDef }) {
+  const { t } = useI18nStore();
   const IconComp = Icons[tab.icon];
   return (
     <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '48px 32px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
@@ -66,58 +69,87 @@ function ComingSoonCard({ tab, isZh }: { tab: TabDef; isZh: boolean }) {
         {IconComp && <IconComp size={24} />}
       </div>
       <div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>{isZh ? tab.labelZh : tab.labelEn}</div>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 380 }}>{isZh ? tab.descZh : tab.descEn}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>{t(tab.labelKey, tab.labelFb)}</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 380 }}>{t(tab.descKey, tab.descFb)}</div>
       </div>
-      <div style={{ padding: '5px 14px', borderRadius: 99, background: 'var(--blue-dim)', color: 'var(--blue)', fontSize: 11, fontWeight: 700, letterSpacing: '0.3px', border: '1px solid rgba(88,166,255,0.3)' }}>
-        {isZh ? '即将推出' : 'Coming Soon'}
+      <div style={{ padding: '5px 14px', borderRadius: 99, background: 'var(--blue-dim)', color: 'var(--blue)', fontSize: 11, fontWeight: 700, border: '1px solid rgba(88,166,255,0.3)' }}>
+        {t('admin_coming_soon', 'Coming Soon')}
       </div>
     </div>
   );
 }
 
 export default function AdminSetupPage() {
-  const { user }        = useAuthStore();
-  const { currentLang } = useI18nStore();
-  const isZh            = currentLang === 'zh';
-  const isSuperAdmin    = (user as any)?.role === 'superadmin';
+  const { user }     = useAuthStore();
+  const { t }        = useI18nStore();
+  const isSuperAdmin = (user as any)?.role === 'superadmin';
 
-  const [activeTab,    setActiveTab]    = useState<SetupTab>('identity');
+  const [activeTab,     setActiveTab]     = useState<SetupTab>('identity');
   const [tabHasChanges, setTabHasChanges] = useState(false);
-  const [tabSaving,    setTabSaving]    = useState(false);
+  const [tabSaving,     setTabSaving]     = useState(false);
+  const [tabContext,    setTabContext]     = useState<TabContext | null>(null);
 
-  const identityTabRef = useRef<ProjectIdentityTabHandle>(null);
+  const identityTabRef       = useRef<ProjectIdentityTabHandle>(null);
+  const dashboardTabRef      = useRef<DashboardSettingsTabHandle>(null);
+  const notificationsTabRef  = useRef<NotificationsTabHandle>(null);
+  const integrationsTabRef   = useRef<IntegrationsTabHandle>(null);
 
   const handleSave = useCallback(() => {
-    if (activeTab === 'identity') identityTabRef.current?.save();
+    if (activeTab === 'identity')      identityTabRef.current?.save();
+    if (activeTab === 'dashboard')     dashboardTabRef.current?.save();
+    if (activeTab === 'notifications') notificationsTabRef.current?.save();
+    if (activeTab === 'integrations')  integrationsTabRef.current?.save();
   }, [activeTab]);
 
   const handleReset = useCallback(() => {
-    if (activeTab === 'identity') identityTabRef.current?.reset();
+    if (activeTab === 'identity')      identityTabRef.current?.reset();
+    if (activeTab === 'dashboard')     dashboardTabRef.current?.reset();
+    if (activeTab === 'notifications') notificationsTabRef.current?.reset();
+    if (activeTab === 'integrations')  integrationsTabRef.current?.reset();
   }, [activeTab]);
+
+  const handleStateChange = useCallback((hc: boolean, sv: boolean) => {
+    setTabHasChanges(hc); setTabSaving(sv);
+  }, []);
+
+  const handleTabSwitch = (tab: SetupTab) => {
+    setActiveTab(tab); setTabHasChanges(false); setTabSaving(false);
+  };
+
+  const handleNavigateToIntegrations = useCallback((ctx: TabContext) => {
+    setTabContext(ctx);
+    setActiveTab('integrations');
+    setTabHasChanges(false); setTabSaving(false);
+  }, []);
+
+  const handleReturnToLanguages = useCallback((ctx: TabContext) => {
+    setTabContext(ctx);
+    setActiveTab('language');
+    setTabHasChanges(false); setTabSaving(false);
+  }, []);
+
+  const handleClearContext = useCallback(() => { setTabContext(null); }, []);
 
   if (!isSuperAdmin) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 16 }}>
-        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--red-dim)', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icons.shield size={28} /></div>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>{isZh ? '访问受限' : 'Access Denied'}</h2>
-        <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 400 }}>
-          {isZh ? '只有超级管理员可以访问管理设置页面。' : 'Only Super Admin users can access the Admin Setup page.'}
-        </p>
+        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--red-dim)', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icons.shield size={28} />
+        </div>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>{t('admin_access_denied', 'Access Denied')}</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 400 }}>{t('admin_access_denied_desc', 'Only Super Admin users can access the Admin Setup page.')}</p>
       </div>
     );
   }
 
-  const activeTabDef = TABS.find((t) => t.id === activeTab)!;
-  const showSavePanel = activeTab === 'identity';
+  const activeTabDef  = TABS.find(tab => tab.id === activeTab)!;
+  const showSavePanel = TABS_WITH_SAVE.has(activeTab) && activeTabDef.status === 'live';
 
   return (
     <div style={{ width: '100%', maxWidth: 1040 }}>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{isZh ? '管理设置' : 'Admin Setup'}</h1>
-        <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-          {isZh ? '配置您的 Hub 设置。这些设置将影响所有用户看到的内容。' : 'Configure your hub. These settings affect how the hub appears to all users.'}
-        </p>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{t('admin_setup_title', 'Admin Setup')}</h1>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>{t('admin_setup_desc', 'Configure your hub. These settings affect how the hub appears to all users.')}</p>
       </div>
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
@@ -125,11 +157,11 @@ export default function AdminSetupPage() {
         {/* Left nav */}
         <div style={{ width: 252, flexShrink: 0, position: 'sticky', top: 0 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {TABS.map((tab) => {
+            {TABS.map(tab => {
               const active   = activeTab === tab.id;
               const IconComp = Icons[tab.icon];
               return (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                <button key={tab.id} onClick={() => handleTabSwitch(tab.id)}
                   style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%', background: active ? 'var(--accent-dim)' : 'transparent', transition: 'all var(--transition)' }}>
                   <div style={{ width: 30, height: 30, borderRadius: 7, flexShrink: 0, marginTop: 1, background: active ? 'var(--accent)' : 'var(--bg-elevated)', color: active ? 'var(--text-inverse)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: active ? 'none' : '1px solid var(--border)', transition: 'all var(--transition)' }}>
                     {IconComp && <IconComp size={14} />}
@@ -137,16 +169,16 @@ export default function AdminSetupPage() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 12, fontWeight: active ? 700 : 500, color: active ? 'var(--text-primary)' : 'var(--text-secondary)', lineHeight: 1.3 }}>
-                        {isZh ? tab.labelZh : tab.labelEn}
+                        {t(tab.labelKey, tab.labelFb)}
                       </span>
                       {tab.status === 'coming' && (
                         <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: 'var(--bg-overlay)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
-                          {isZh ? '即将推出' : 'SOON'}
+                          {t('admin_coming_soon', 'SOON')}
                         </span>
                       )}
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {isZh ? tab.descZh : tab.descEn}
+                      {t(tab.descKey, tab.descFb)}
                     </div>
                   </div>
                 </button>
@@ -154,19 +186,18 @@ export default function AdminSetupPage() {
             })}
           </div>
 
-          {/* Save panel — identity tab only */}
           {showSavePanel && (
             <div style={{ marginTop: 14, padding: '14px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ fontSize: 11, color: tabHasChanges ? 'var(--orange)' : 'var(--text-muted)', fontWeight: 600 }}>
-                {tabHasChanges ? (isZh ? '有未保存的更改' : 'Unsaved changes') : (isZh ? '已全部保存' : 'All saved')}
+                {tabHasChanges ? t('admin_unsaved_changes', 'Unsaved changes') : t('admin_all_saved', 'All saved')}
               </div>
               <button onClick={handleSave} disabled={tabSaving || !tabHasChanges}
-                style={{ padding: '10px 14px', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: 'var(--text-inverse)', border: 'none', fontSize: 13, fontWeight: 600, cursor: tabSaving || !tabHasChanges ? 'not-allowed' : 'pointer', opacity: tabSaving || !tabHasChanges ? 0.6 : 1, transition: 'opacity var(--transition)' }}>
-                {tabSaving ? (isZh ? '保存中…' : 'Saving…') : (isZh ? '保存更改' : 'Save Changes')}
+                style={{ padding: '10px 14px', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: 'var(--text-inverse)', border: 'none', fontSize: 13, fontWeight: 600, cursor: tabSaving || !tabHasChanges ? 'not-allowed' : 'pointer', opacity: tabSaving || !tabHasChanges ? 0.6 : 1 }}>
+                {tabSaving ? t('admin_saving', 'Saving…') : t('admin_save_changes', 'Save Changes')}
               </button>
               <button onClick={handleReset}
                 style={{ padding: '8px 14px', borderRadius: 'var(--radius-sm)', background: 'none', color: 'var(--text-secondary)', border: '1px solid var(--border)', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>
-                {isZh ? '重置为默认' : 'Reset to Default'}
+                {activeTab === 'identity' ? t('admin_reset_to_default', 'Reset to Default') : t('admin_discard_changes', 'Discard Changes')}
               </button>
             </div>
           )}
@@ -174,13 +205,32 @@ export default function AdminSetupPage() {
 
         {/* Tab content */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {activeTab === 'identity'  && (
-            <ProjectIdentityTab ref={identityTabRef}
-              onStateChange={(hc, sv) => { setTabHasChanges(hc); setTabSaving(sv); }} />
+          {activeTab === 'identity' && (
+            <ProjectIdentityTab ref={identityTabRef} onStateChange={handleStateChange} />
           )}
-          {activeTab === 'language'  && <LanguageTranslationTab />}
-          {activeTab !== 'identity' && activeTab !== 'language' && (
-            <ComingSoonCard tab={activeTabDef} isZh={isZh} />
+          {activeTab === 'language' && (
+            <LanguageTranslationTab
+              tabContext={tabContext}
+              onNavigateToIntegrations={handleNavigateToIntegrations}
+              onClearContext={handleClearContext}
+            />
+          )}
+          {activeTab === 'dashboard' && (
+            <DashboardSettingsTab ref={dashboardTabRef} onStateChange={handleStateChange} />
+          )}
+          {activeTab === 'notifications' && (
+            <NotificationsTab ref={notificationsTabRef} onStateChange={handleStateChange} />
+          )}
+          {activeTab === 'integrations' && (
+            <IntegrationsTab
+              ref={integrationsTabRef}
+              onStateChange={handleStateChange}
+              tabContext={activeTab === 'integrations' ? tabContext : null}
+              onReturnToLanguages={handleReturnToLanguages}
+            />
+          )}
+          {!['identity','language','dashboard','notifications','integrations'].includes(activeTab) && (
+            <ComingSoonCard tab={activeTabDef} />
           )}
         </div>
       </div>

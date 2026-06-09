@@ -1,0 +1,33 @@
+PATCH INSTRUCTION FOR AuthService.java
+=====================================
+File: backend/src/main/java/com/raosshub/service/AuthService.java
+
+CHANGE 1 — Add ConfigService import (top of file, with other imports):
+  ADD: import com.raosshub.service.ConfigService;
+
+CHANGE 2 — Add ConfigService field (with other private final fields):
+  ADD: private final ConfigService configService;
+  (Lombok @RequiredArgsConstructor will include it in the constructor automatically)
+
+CHANGE 3 — Replace the NDA delete block inside login() method:
+
+FIND (exact text):
+            // Clear NDA acceptance — forces re-acceptance on every login
+            ndaAgreementRepository.findByUserId(user.getId())
+                .ifPresent(ndaAgreementRepository::delete);
+
+REPLACE WITH:
+            // NDA enforcement:
+            // forceOnVersionChange = false (default) → clear on every login (session-scoped)
+            // forceOnVersionChange = true            → NDA persists; status endpoint checks version
+            boolean forceOnVersion = false;
+            try {
+                Object ndaCfg = configService.getConfig().get("nda");
+                if (ndaCfg instanceof java.util.Map<?,?> m) {
+                    forceOnVersion = Boolean.TRUE.equals(m.get("forceOnVersionChange"));
+                }
+            } catch (Exception ignored) {}
+            if (!forceOnVersion) {
+                ndaAgreementRepository.findByUserId(user.getId())
+                    .ifPresent(ndaAgreementRepository::delete);
+            }

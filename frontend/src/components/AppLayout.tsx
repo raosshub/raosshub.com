@@ -10,12 +10,16 @@ import { Icons }          from '@/components/icons';
 import { STATUS_OPTIONS, getStatusLabel } from '@/types';
 
 const STATUS_COLORS: Record<string, string> = {
-  planning:    '#6b7280',
-  development: '#3b82f6',
-  prototype:   '#f59e0b',
-  production:  '#10b981',
-  maintenance: '#8b5cf6',
-  completed:   '#059669',
+  planning:        '#6b7280',
+  development:     '#3b82f6',
+  prototype:       '#f59e0b',
+  production:      '#10b981',
+  maintenance:     '#8b5cf6',
+  completed:       '#059669',
+  // Legacy DB values before Tab 1 normalisation
+  'in development':  '#3b82f6',
+  'in-development':  '#3b82f6',
+  'in_development':  '#3b82f6',
 };
 
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -145,7 +149,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <UtilButton icon="sun" label={theme === 'dark' ? (t('tool_theme_light') || 'Light Mode') : (t('tool_theme_dark') || 'Dark Mode')} onClick={toggleTheme} />
             {isSuperAdmin && <UtilButton icon="robot"    label={t('tool_hub_assist') || 'HUB Assist'}   onClick={() => navigate('/assistant')}    accent  active={currentPath === '/assistant'} />}
             {isAdmin      && <UtilButton icon="clock"    label={t('tool_activity_log') || 'Activity Log'} onClick={() => navigate('/activity-log')}  active={currentPath === '/activity-log'} />}
-            {isSuperAdmin && <UtilButton icon="shield"   label={isZh ? '管理设置' : 'Admin Setup'}       onClick={() => navigate('/admin/setup')}   active={currentPath.startsWith('/admin')} />}
+            {isSuperAdmin && <UtilButton icon="shield"   label={t('tool_admin_setup') || 'Admin Setup'}       onClick={() => navigate('/admin/setup')}   active={currentPath.startsWith('/admin')} />}
             <UtilButton icon="settings" label={t('nav_settings') || 'Settings'} onClick={() => navigate('/settings')} active={currentPath === '/settings'} />
             <UtilButton icon="logOut"   label={t('tool_sign_out') || 'Sign Out'} onClick={logout} danger />
           </div>

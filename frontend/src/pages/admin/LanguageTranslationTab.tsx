@@ -1,658 +1,588 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useI18nStore }          from '@/stores/useI18nStore';
-import { useNotificationStore }  from '@/stores/useNotificationStore';
+import { useI18nStore }         from '@/stores/useI18nStore';
+import { useNotificationStore } from '@/stores/useNotificationStore';
 import { languageApi, i18nApi, kimiApi } from '@/utils/api';
-import type { Language }         from '@/types';
-import { Icons }                 from '@/components/icons';
+import { Icons } from '@/components/icons';
+import type { Language } from '@/types';
 
-// ─── Pre-populated language list ──────────────────────────────────────────────
-// Auto-fills code, English name, native name, RTL flag when selected.
-// EN and ZH excluded — already seeded in the DB.
-const LANGUAGE_PRESETS = [
-  { code: 'ar',    name: 'Arabic',                nameNative: 'العربية',         isRtl: true  },
-  { code: 'bn',    name: 'Bengali',               nameNative: 'বাংলা',            isRtl: false },
-  { code: 'zh-TW', name: 'Chinese Traditional',  nameNative: '繁體中文',          isRtl: false },
-  { code: 'nl',    name: 'Dutch',                 nameNative: 'Nederlands',       isRtl: false },
-  { code: 'fr',    name: 'French',                nameNative: 'Français',         isRtl: false },
-  { code: 'de',    name: 'German',                nameNative: 'Deutsch',          isRtl: false },
-  { code: 'el',    name: 'Greek',                 nameNative: 'Ελληνικά',         isRtl: false },
-  { code: 'gu',    name: 'Gujarati',              nameNative: 'ગુજરાતી',           isRtl: false },
-  { code: 'he',    name: 'Hebrew',                nameNative: 'עברית',            isRtl: true  },
-  { code: 'hi',    name: 'Hindi',                 nameNative: 'हिन्दी',             isRtl: false },
-  { code: 'id',    name: 'Indonesian',            nameNative: 'Bahasa Indonesia', isRtl: false },
-  { code: 'it',    name: 'Italian',               nameNative: 'Italiano',         isRtl: false },
-  { code: 'ja',    name: 'Japanese',              nameNative: '日本語',            isRtl: false },
-  { code: 'kn',    name: 'Kannada',               nameNative: 'ಕನ್ನಡ',              isRtl: false },
-  { code: 'ko',    name: 'Korean',                nameNative: '한국어',            isRtl: false },
-  { code: 'ms',    name: 'Malay',                 nameNative: 'Bahasa Melayu',    isRtl: false },
-  { code: 'mr',    name: 'Marathi',               nameNative: 'मराठी',              isRtl: false },
-  { code: 'fa',    name: 'Persian (Farsi)',        nameNative: 'فارسی',            isRtl: true  },
-  { code: 'pl',    name: 'Polish',                nameNative: 'Polski',           isRtl: false },
-  { code: 'pt',    name: 'Portuguese',            nameNative: 'Português',        isRtl: false },
-  { code: 'pa',    name: 'Punjabi',               nameNative: 'ਪੰਜਾਬੀ',             isRtl: false },
-  { code: 'ro',    name: 'Romanian',              nameNative: 'Română',           isRtl: false },
-  { code: 'ru',    name: 'Russian',               nameNative: 'Русский',          isRtl: false },
-  { code: 'es',    name: 'Spanish',               nameNative: 'Español',          isRtl: false },
-  { code: 'sw',    name: 'Swahili',               nameNative: 'Kiswahili',        isRtl: false },
-  { code: 'sv',    name: 'Swedish',               nameNative: 'Svenska',          isRtl: false },
-  { code: 'ta',    name: 'Tamil',                 nameNative: 'தமிழ்',              isRtl: false },
-  { code: 'te',    name: 'Telugu',                nameNative: 'తెలుగు',             isRtl: false },
-  { code: 'th',    name: 'Thai',                  nameNative: 'ภาษาไทย',           isRtl: false },
-  { code: 'tr',    name: 'Turkish',               nameNative: 'Türkçe',           isRtl: false },
-  { code: 'uk',    name: 'Ukrainian',             nameNative: 'Українська',       isRtl: false },
-  { code: 'ur',    name: 'Urdu',                  nameNative: 'اردو',             isRtl: true  },
-  { code: 'vi',    name: 'Vietnamese',            nameNative: 'Tiếng Việt',       isRtl: false },
-  { code: 'yo',    name: 'Yoruba',                nameNative: 'Yorùbá',           isRtl: false },
-] as const;
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const isNoApiKey = (e: any): boolean =>
+  e?.response?.status === 503 &&
+  (e?.response?.data?.error === 'no_api_key' ||
+   e?.response?.data?.error === 'no-api-key');
+
+function extractJSON(text: string): any {
+  try { return JSON.parse(text); } catch {}
+  const m = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+  if (m) { try { return JSON.parse(m[0]); } catch {} }
+  return null;
+}
+
+/**
+ * Guard: true only for plain JS objects — not null, not array, not primitive.
+ * Must pass before calling saveLocaleContent. Without this, an unexpected Kimi
+ * response (array, string, null) reaches the backend as a non-Map value,
+ * causing a ClassCastException → 500 in 26ms.
+ */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface TranslationRow {
+  key:    string;
+  label:  string;
+  status: 'pending' | 'translating' | 'done' | 'error';
+  error?: string;
+}
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const card: React.CSSProperties = {
-  background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-  borderRadius: 'var(--radius)', padding: '18px 20px', marginBottom: 14,
-};
-const label: React.CSSProperties = {
-  fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
-  letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 5, display: 'block',
-};
-const input: React.CSSProperties = {
-  width: '100%', padding: '8px 11px', borderRadius: 'var(--radius-sm)',
-  border: '1px solid var(--border)', background: 'var(--bg-input)',
-  color: 'var(--text-primary)', fontSize: 13, outline: 'none', boxSizing: 'border-box',
-};
-const select: React.CSSProperties = { ...input, cursor: 'pointer' };
+const cardSt:   React.CSSProperties = { background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '18px 20px', marginBottom: 14 };
+const labelSt:  React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 5, display: 'block' };
+const inputSt:  React.CSSProperties = { width: '100%', padding: '8px 11px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13, outline: 'none', boxSizing: 'border-box' };
+const selectSt: React.CSSProperties = { ...inputSt, cursor: 'pointer' };
 
-function SectionHeading({ color, children }: { color: string; children: React.ReactNode }) {
+function SectionHeading({ color, label }: { color: string; label: string }) {
   return (
     <h3 style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
       <span style={{ width: 3, height: 14, background: color, borderRadius: 2, flexShrink: 0 }} />
-      {children}
+      {label}
     </h3>
   );
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-interface LogItem { path: string; status: 'pending' | 'done' | 'error'; }
-interface SectionEntry { sectionPath: string; content: unknown; hasTarget: boolean; confirm: boolean; }
+const STATUS_COLOR: Record<TranslationRow['status'], string> = {
+  pending:     'var(--text-muted)',
+  translating: 'var(--orange)',
+  done:        '#059669',
+  error:       'var(--red)',
+};
 
-const defaultAddForm = { code: '', name: '', nameNative: '', isRtl: false };
+// ─── Language lookup (35 common languages) ────────────────────────────────────
+// Shown in the Add Language dropdown so the admin never has to know a code or
+// native name. Options sorted alphabetically by English name.
+const LANG_LOOKUP: Record<string, { name: string; nameNative: string; isRtl: boolean }> = {
+  af:      { name: 'Afrikaans',             nameNative: 'Afrikaans',          isRtl: false },
+  ar:      { name: 'Arabic',                nameNative: 'العربية',             isRtl: true  },
+  bn:      { name: 'Bengali',               nameNative: 'বাংলা',               isRtl: false },
+  cs:      { name: 'Czech',                 nameNative: 'Čeština',             isRtl: false },
+  da:      { name: 'Danish',                nameNative: 'Dansk',               isRtl: false },
+  de:      { name: 'German',                nameNative: 'Deutsch',             isRtl: false },
+  el:      { name: 'Greek',                 nameNative: 'Ελληνικά',            isRtl: false },
+  es:      { name: 'Spanish',               nameNative: 'Español',             isRtl: false },
+  fa:      { name: 'Persian',               nameNative: 'فارسی',               isRtl: true  },
+  fi:      { name: 'Finnish',               nameNative: 'Suomi',               isRtl: false },
+  fr:      { name: 'French',                nameNative: 'Français',            isRtl: false },
+  he:      { name: 'Hebrew',                nameNative: 'עברית',               isRtl: true  },
+  hi:      { name: 'Hindi',                 nameNative: 'हिन्दी',              isRtl: false },
+  hu:      { name: 'Hungarian',             nameNative: 'Magyar',              isRtl: false },
+  id:      { name: 'Indonesian',            nameNative: 'Bahasa Indonesia',    isRtl: false },
+  it:      { name: 'Italian',               nameNative: 'Italiano',            isRtl: false },
+  ja:      { name: 'Japanese',              nameNative: '日本語',              isRtl: false },
+  ko:      { name: 'Korean',                nameNative: '한국어',               isRtl: false },
+  ms:      { name: 'Malay',                 nameNative: 'Bahasa Melayu',       isRtl: false },
+  nl:      { name: 'Dutch',                 nameNative: 'Nederlands',          isRtl: false },
+  no:      { name: 'Norwegian',             nameNative: 'Norsk',               isRtl: false },
+  pl:      { name: 'Polish',                nameNative: 'Polski',              isRtl: false },
+  pt:      { name: 'Portuguese',            nameNative: 'Português',           isRtl: false },
+  ro:      { name: 'Romanian',              nameNative: 'Română',              isRtl: false },
+  ru:      { name: 'Russian',               nameNative: 'Русский',             isRtl: false },
+  sv:      { name: 'Swedish',               nameNative: 'Svenska',             isRtl: false },
+  sw:      { name: 'Swahili',               nameNative: 'Kiswahili',           isRtl: false },
+  th:      { name: 'Thai',                  nameNative: 'ภาษาไทย',             isRtl: false },
+  tr:      { name: 'Turkish',               nameNative: 'Türkçe',              isRtl: false },
+  uk:      { name: 'Ukrainian',             nameNative: 'Українська',          isRtl: false },
+  ur:      { name: 'Urdu',                  nameNative: 'اردو',                isRtl: true  },
+  vi:      { name: 'Vietnamese',            nameNative: 'Tiếng Việt',          isRtl: false },
+  zh:      { name: 'Chinese',               nameNative: '中文',                isRtl: false },
+  'zh-tw': { name: 'Chinese (Traditional)', nameNative: '繁體中文',            isRtl: false },
+};
 
 // ─── Component ────────────────────────────────────────────────────────────────
-const LanguageTranslationTab: React.FC = () => {
-  const { currentLang, setLanguage: storeSetLanguage } = useI18nStore();
-  const { addToast }     = useNotificationStore();
-  const isZh             = currentLang === 'zh';
+export default function LanguageTranslationTab() {
+  const { t, languages, currentLang, defaultLang, loadLanguages, loadUiStrings } = useI18nStore();
+  const { addToast } = useNotificationStore();
 
-  const [allLanguages,   setAllLanguages]   = useState<Language[]>([]);
-  const [loading,        setLoading]        = useState(true);
-  const [editingId,      setEditingId]      = useState<number | null>(null);
-  const [editForm,       setEditForm]       = useState({ name: '', nameNative: '', isRtl: false, isActive: true });
-  const [saving,         setSaving]         = useState(false);
+  const [allLanguages,    setAllLanguages]    = useState<Language[]>([]);
+  const [loading,         setLoading]         = useState(true);
+  const [targetCode,      setTargetCode]      = useState('');
+  const [rows,            setRows]            = useState<TranslationRow[]>([]);
+  const [running,         setRunning]         = useState(false);
+  const [progress,        setProgress]        = useState(0);
+  const [showAddForm,     setShowAddForm]      = useState(false);
+  const [newCode,         setNewCode]         = useState('');
+  const [newName,         setNewName]         = useState('');
+  const [newNative,       setNewNative]       = useState('');
+  const [newRtl,          setNewRtl]          = useState(false);
+  const [selectedLookupKey, setSelectedLookupKey] = useState('');
+  const abortRef = useRef(false);
 
-  // Add form
-  const [addForm,        setAddForm]        = useState(defaultAddForm);
-  const [presetQuery,    setPresetQuery]    = useState('');
-  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
-  const [showAddForm,    setShowAddForm]    = useState(false);
-  const [addSaving,      setAddSaving]      = useState(false);
+  const updateRow = useCallback((key: string, patch: Partial<TranslationRow>) =>
+    setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r)),
+  []);
 
-  // Translation
-  const [targetCode,     setTargetCode]     = useState('');
-  const [includeUi,      setIncludeUi]      = useState(true);
-  const [includeLocale,  setIncludeLocale]  = useState(true);
-  const [sections,       setSections]       = useState<SectionEntry[]>([]);
-  const [preflightDone,  setPreflightDone]  = useState(false);
-  const [preflighting,   setPreflighting]   = useState(false);
-  const [translating,    setTranslating]    = useState(false);
-  const [progress,       setProgress]       = useState(0);
-  const [log,            setLog]            = useState<LogItem[]>([]);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  // ─── Load all languages ──────────────────────────────────────────────────
-  const reload = useCallback(async () => {
+  // ── Load all languages ────────────────────────────────────────────────────
+  const loadAll = useCallback(async () => {
     setLoading(true);
     try {
       const res = await languageApi.getAll();
-      setAllLanguages(res.data.data);
-    } catch { addToast(isZh ? '加载语言失败' : 'Failed to load languages', 'error'); }
+      setAllLanguages(res.data.data || []);
+    } catch {
+      addToast(t('lt_loading', 'Loading…'), 'error');
+    }
     setLoading(false);
-  }, [addToast, isZh]);
+  }, [addToast, t]);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { loadAll(); }, [loadAll]);
 
-  // Reset preflight when target changes
-  useEffect(() => { setPreflightDone(false); setSections([]); setLog([]); setProgress(0); }, [targetCode]);
-
-  // ─── Section 1: Set default language ────────────────────────────────────
-  const handleSetDefault = useCallback(async (id: number) => {
+  // ── Set default language ──────────────────────────────────────────────────
+  const handleSetDefault = useCallback(async (id: number, code: string) => {
     try {
       await languageApi.setDefault(id);
-      addToast(isZh ? '默认语言已更新' : 'Default language updated', 'success');
-      reload();
-    } catch (e: any) {
-      addToast(e.response?.data?.message || (isZh ? '操作失败' : 'Operation failed'), 'error');
+      await loadLanguages();
+      await loadAll();
+      addToast(t('lt_default_changed', 'Default language updated'), 'success');
+    } catch {
+      addToast(t('lt_error', 'Error'), 'error');
     }
-  }, [addToast, isZh, reload]);
+  }, [loadLanguages, loadAll, addToast, t]);
 
-  // ─── Section 2: Toggle active / save edit ────────────────────────────────
+  // ── Toggle active ─────────────────────────────────────────────────────────
   const handleToggleActive = useCallback(async (lang: Language) => {
-    if (lang.code === 'en') return;
     try {
       await languageApi.update(lang.id, { isActive: !lang.isActive });
-      addToast(isZh ? '已更新' : 'Updated', 'success');
-      reload();
-    } catch (e: any) {
-      addToast(e.response?.data?.message || (isZh ? '操作失败' : 'Failed'), 'error');
+      await loadAll();
+      addToast(lang.isActive ? t('lt_lang_deactivated', 'Language deactivated') : t('lt_lang_activated', 'Language activated'), 'success');
+    } catch {
+      addToast(t('lt_error', 'Error'), 'error');
     }
-  }, [addToast, isZh, reload]);
+  }, [loadAll, addToast, t]);
 
-  const openEdit = (lang: Language) => {
-    setEditingId(lang.id);
-    setEditForm({ name: lang.name, nameNative: lang.nameNative, isRtl: lang.isRtl, isActive: lang.isActive });
-  };
-
-  const handleSaveEdit = useCallback(async () => {
-    if (!editingId) return;
-    setSaving(true);
-    try {
-      await languageApi.update(editingId, editForm);
-      addToast(isZh ? '已保存' : 'Saved', 'success');
-      setEditingId(null);
-      reload();
-    } catch (e: any) {
-      addToast(e.response?.data?.message || (isZh ? '保存失败' : 'Save failed'), 'error');
-    }
-    setSaving(false);
-  }, [editingId, editForm, addToast, isZh, reload]);
-
-  // ─── Section 3: Add language ──────────────────────────────────────────────
-  const selectPreset = (preset: typeof LANGUAGE_PRESETS[number]) => {
-    setSelectedPreset(preset.code);
-    setAddForm({ code: preset.code, name: preset.name, nameNative: preset.nameNative, isRtl: preset.isRtl });
-    setShowAddForm(true);
-  };
-
+  // ── Add language ──────────────────────────────────────────────────────────
   const handleAddLanguage = useCallback(async () => {
-    if (!addForm.code.trim() || !addForm.name.trim()) {
-      addToast(isZh ? '语言代码和名称为必填项' : 'Code and name are required', 'error');
+    if (!newCode.trim() || !newName.trim() || !newNative.trim()) return;
+    try {
+      await languageApi.create({ code: newCode.trim().toLowerCase(), name: newName.trim(), nameNative: newNative.trim(), isRtl: newRtl });
+      await loadAll();
+      setShowAddForm(false); setNewCode(''); setNewName(''); setNewNative(''); setNewRtl(false); setSelectedLookupKey('');
+      addToast(t('lt_lang_added', 'Language added'), 'success');
+    } catch {
+      addToast(t('lt_error', 'Error'), 'error');
+    }
+  }, [newCode, newName, newNative, newRtl, loadAll, addToast, t]);
+
+  // When admin selects from the language dropdown, auto-fill all three fields.
+  // '__custom__' clears all fields for manual entry.
+  const handleLookupSelect = useCallback((code: string) => {
+    setSelectedLookupKey(code);
+    if (code === '__custom__') {
+      setNewCode(''); setNewName(''); setNewNative(''); setNewRtl(false);
+    } else if (code && LANG_LOOKUP[code]) {
+      const entry = LANG_LOOKUP[code];
+      setNewCode(code);
+      setNewName(entry.name);
+      setNewNative(entry.nameNative);
+      setNewRtl(entry.isRtl);
+    }
+  }, []);
+
+  // ── Pre-flight check ──────────────────────────────────────────────────────
+  // Uses defaultLang as source — not hardcoded 'en'.
+  const handlePreflight = useCallback(async () => {
+    if (!targetCode) return;
+    setRows([]);
+    const newRows: TranslationRow[] = [];
+
+    // UI strings (from default language)
+    try {
+      const uiRes = await i18nApi.getUiStrings(defaultLang);
+      const keys  = Object.keys(uiRes.data.data || {});
+      if (keys.length > 0) {
+        newRows.push({ key: '__ui_strings__', label: t('lt_ui_strings_label', 'UI Strings') + ` (${keys.length})`, status: 'pending' });
+      }
+    } catch {}
+
+    // Locale content sections (from default language)
+    try {
+      const secRes  = await i18nApi.getSections(defaultLang);
+      const sections: string[] = secRes.data.data || [];
+      sections.forEach(path => {
+        newRows.push({ key: path, label: path, status: 'pending' });
+      });
+    } catch {}
+
+    if (newRows.length === 0) {
+      addToast(t('lt_no_sections', 'No content sections found. Add content in Dashboard Settings first.'), 'info');
       return;
     }
-    setAddSaving(true);
-    try {
-      await languageApi.create(addForm);
-      addToast(isZh ? `已添加 ${addForm.name}（默认为停用状态，需翻译后再激活）` : `Added ${addForm.name}. Inactive by default — translate then activate.`, 'success');
-      setAddForm(defaultAddForm);
-      setSelectedPreset(null);
-      setShowAddForm(false);
-      setPresetQuery('');
-      reload();
-    } catch (e: any) {
-      addToast(e.response?.data?.message || (isZh ? '添加失败' : 'Add failed'), 'error');
-    }
-    setAddSaving(false);
-  }, [addForm, addToast, isZh, reload]);
+    setRows(newRows);
+  }, [targetCode, defaultLang, addToast, t]);
 
-  // ─── Section 4: Pre-flight check ─────────────────────────────────────────
-  const runPreflight = useCallback(async () => {
-    if (!targetCode) { addToast(isZh ? '请选择目标语言' : 'Select a target language', 'error'); return; }
-    setPreflighting(true);
-    try {
-      const [enRes, targetRes] = await Promise.all([
-        i18nApi.getSections('en'),
-        i18nApi.getSections(targetCode),
-      ]);
-      const enSections    = enRes.data.data as { sectionPath: string; content: unknown }[];
-      const targetPaths   = new Set((targetRes.data.data as { sectionPath: string }[]).map(s => s.sectionPath));
+  // ── Run translation ───────────────────────────────────────────────────────
+  // SOURCE is always defaultLang. TARGET is the selected targetCode.
+  // If targetCode === defaultLang, translation is a no-op (same language).
+  const handleStartTranslation = useCallback(async () => {
+    if (!targetCode || rows.length === 0 || running) return;
 
-      setSections(enSections.map(s => ({
-        sectionPath: s.sectionPath,
-        content:     s.content,
-        hasTarget:   targetPaths.has(s.sectionPath),
-        confirm:     true,   // default: translate all (overwrite existing)
-      })));
-      setPreflightDone(true);
-    } catch { addToast(isZh ? '预检失败' : 'Pre-flight check failed', 'error'); }
-    setPreflighting(false);
-  }, [targetCode, addToast, isZh]);
-
-  // ─── Section 4: Run translation ───────────────────────────────────────────
-  const runTranslation = useCallback(async () => {
-    if (!targetCode) return;
-    const targetLang = allLanguages.find(l => l.code === targetCode);
-    const langName   = targetLang?.name || targetCode;
-    const newLog: LogItem[] = [];
-
-    const update = (items: LogItem[]) => {
-      if (mountedRef.current) setLog([...items]);
-    };
-
-    setTranslating(true);
+    abortRef.current = false;
+    setRunning(true);
     setProgress(0);
 
-    let completed = 0;
-    const confirmedSections = sections.filter(s => s.confirm);
-    const total = (includeUi ? 1 : 0) + (includeLocale ? confirmedSections.length : 0);
-    if (total === 0) { setTranslating(false); return; }
+    let done = 0;
+    const total = rows.length;
 
-    // Strip markdown fences from Kimi JSON response
-    const clean = (s: string) => s.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '');
+    // Determine source language name for Kimi prompt
+    const sourceLang = allLanguages.find(l => l.code === defaultLang);
+    const targetLang = allLanguages.find(l => l.code === targetCode);
+    const sourceLabel = sourceLang?.name || defaultLang;
+    const targetLabel = targetLang?.name || targetCode;
 
-    // ── UI strings ──────────────────────────────────────────────────────────
-    if (includeUi) {
-      const item: LogItem = { path: isZh ? 'UI 文字' : 'UI Strings', status: 'pending' };
-      newLog.push(item);
-      update(newLog);
+    for (const row of rows) {
+      if (abortRef.current) { break; }
+
+      updateRow(row.key, { status: 'translating' });
+
       try {
-        const enStrings = (await i18nApi.getUiStrings('en')).data.data as Record<string, string>;
-        const entries   = Object.entries(enStrings);
-        const batchSize = 50;
+        // ── UI Strings ───────────────────────────────────────────────
+        if (row.key === '__ui_strings__') {
+          const uiRes = await i18nApi.getUiStrings(defaultLang);
+          const allKeys = Object.entries(uiRes.data.data || {}) as [string, string][];
 
-        for (let i = 0; i < entries.length; i += batchSize) {
-          const batch = Object.fromEntries(entries.slice(i, i + batchSize));
-          const res   = await kimiApi.chat({
-            model:       'moonshot-v1-8k',
-            temperature: 0.3,
-            messages: [{
-              role:    'user',
-              content: `Translate all values of this JSON object from English to ${langName}. Keep all keys exactly unchanged. Return only valid JSON, no markdown, no explanation.\n\n${JSON.stringify(batch)}`,
-            }],
-          });
-          const translated = JSON.parse(clean(res.data.choices[0].message.content));
-          for (const [key, value] of Object.entries(translated)) {
-            await i18nApi.saveUiString(key, targetCode, value as string);
+          // Translate in batches of 50
+          const BATCH = 50;
+          for (let i = 0; i < allKeys.length; i += BATCH) {
+            if (abortRef.current) break;
+            const batch = Object.fromEntries(allKeys.slice(i, i + BATCH));
+            try {
+              const res = await kimiApi.chat({
+                model: 'moonshot-v1-8k',
+                max_tokens: 2000,
+                messages: [{
+                  role: 'user',
+                  content: `Translate these UI strings from ${sourceLabel} to ${targetLabel}. Keep keys identical. Only translate the values. Return ONLY valid JSON, no explanation, no markdown.\n${JSON.stringify(batch)}`,
+                }],
+              });
+
+              const text = res.data?.choices?.[0]?.message?.content || '';
+              const parsed = extractJSON(text);
+              if (isPlainObject(parsed)) {
+                for (const [key, value] of Object.entries(parsed)) {
+                  if (typeof value === 'string') {
+                    await i18nApi.saveUiString(key, targetCode, value);
+                  }
+                }
+              }
+            } catch (e) {
+              if (isNoApiKey(e)) {
+                abortRef.current = true;
+                addToast(t('lt_translation_aborted', 'Translation stopped — Kimi API key not configured.'), 'error');
+                updateRow(row.key, { status: 'error', error: t('lt_no_api_key_msg', 'No Kimi API key configured.') });
+                break;
+              }
+            }
+          }
+
+          if (!abortRef.current) updateRow(row.key, { status: 'done' });
+
+        } else {
+          // ── Locale content section ────────────────────────────────
+          const secRes = await i18nApi.getLocaleSection(defaultLang, row.key);
+          const content = secRes.data?.data;
+          if (!content || Object.keys(content).length === 0) {
+            updateRow(row.key, { status: 'done' });
+          } else {
+            const res = await kimiApi.chat({
+              model: 'moonshot-v1-32k',
+              max_tokens: 4000,
+              messages: [{
+                role: 'user',
+                content: `Translate all text values in this JSON from ${sourceLabel} to ${targetLabel}. Keep JSON structure and keys identical. Only translate text values — do not translate IDs, status values (Planned, In Progress, Completed, Delayed, On Hold), dates, or technical identifiers. Return ONLY valid JSON, no explanation, no markdown.\n${JSON.stringify(content)}`,
+              }],
+            });
+
+            const text = res.data?.choices?.[0]?.message?.content || '';
+            const parsed = extractJSON(text);
+            // Guard: only save if Kimi returned a plain object.
+            // Prevents ClassCastException 500 when Kimi returns array/string/null.
+            if (isPlainObject(parsed)) {
+              await i18nApi.saveLocaleContent(targetCode, row.key, parsed, 'kimi-translation');
+            }
+            updateRow(row.key, { status: 'done' });
           }
         }
-        item.status = 'done';
-      } catch (e: any) {
-        item.status = 'error';
-        addToast((isZh ? 'UI 文字翻译失败: ' : 'UI strings error: ') + e.message, 'error');
-      }
-      completed++;
-      if (mountedRef.current) setProgress(Math.round((completed / total) * 100));
-      update(newLog);
-    }
-
-    // ── Locale sections ─────────────────────────────────────────────────────
-    if (includeLocale) {
-      for (const section of confirmedSections) {
-        const item: LogItem = { path: section.sectionPath, status: 'pending' };
-        newLog.push(item);
-        update(newLog);
-        try {
-          const res = await kimiApi.chat({
-            model:       'moonshot-v1-8k',
-            temperature: 0.3,
-            messages: [{
-              role:    'user',
-              content: `Translate all text values in this JSON from English to ${langName}. Keep the structure and all keys identical. Return only valid JSON, no markdown, no explanation.\n\n${JSON.stringify(section.content)}`,
-            }],
-          });
-          const translated = JSON.parse(clean(res.data.choices[0].message.content));
-          await i18nApi.saveLocaleContent(targetCode, section.sectionPath, translated, 'kimi-translation');
-          item.status = 'done';
-        } catch (e: any) {
-          item.status = 'error';
-          addToast(`${section.sectionPath}: ${e.message}`, 'error');
+      } catch (e) {
+        if (isNoApiKey(e)) {
+          abortRef.current = true;
+          addToast(t('lt_translation_aborted', 'Translation stopped — Kimi API key not configured.'), 'error');
+          updateRow(row.key, { status: 'error', error: t('lt_no_api_key_msg', 'No Kimi API key configured.') });
+          break;
         }
-        completed++;
-        if (mountedRef.current) setProgress(Math.round((completed / total) * 100));
-        update(newLog);
+        updateRow(row.key, { status: 'error', error: (e as any)?.message || 'error' });
+      }
+
+      done++;
+      setProgress(Math.round((done / total) * 100));
+    }
+
+    setRunning(false);
+    if (!abortRef.current) {
+      addToast(t('lt_complete', 'Translation complete'), 'success');
+      // Reload UI strings if we just translated the current language
+      if (targetCode === currentLang) {
+        loadUiStrings(currentLang);
       }
     }
+  }, [targetCode, rows, running, defaultLang, allLanguages, addToast, t, updateRow, currentLang, loadUiStrings]);
 
-    if (mountedRef.current) {
-      setTranslating(false);
-      setProgress(100);
-      addToast(isZh ? `翻译完成 → ${langName}` : `Translation complete → ${langName}`, 'success');
-    }
-  }, [targetCode, allLanguages, sections, includeUi, includeLocale, addToast, isZh]);
+  const handleStop = () => { abortRef.current = true; };
 
-  // ─── Filtered presets ─────────────────────────────────────────────────────
-  const existingCodes  = new Set(allLanguages.map(l => l.code));
-  const filteredPresets = LANGUAGE_PRESETS.filter(p =>
-    !existingCodes.has(p.code) &&
-    (!presetQuery || p.name.toLowerCase().includes(presetQuery.toLowerCase()) ||
-     p.nameNative.toLowerCase().includes(presetQuery.toLowerCase()) ||
-     p.code.toLowerCase().includes(presetQuery.toLowerCase()))
-  );
+  if (loading) {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, fontSize: 13, color: 'var(--text-muted)' }}>{t('lt_loading', 'Loading…')}</div>;
+  }
 
-  const nonEnActive = allLanguages.filter(l => l.code !== 'en' && l.isActive);
-
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, fontSize: 13, color: 'var(--text-muted)' }}>
-      {isZh ? '加载中…' : 'Loading…'}
-    </div>
-  );
+  const defaultLangObj = allLanguages.find(l => l.code === defaultLang);
+  const nonDefaultLangs = allLanguages.filter(l => !l.isDefault);
 
   return (
     <div>
 
-      {/* ── 1. LANGUAGE SETTINGS ─────────────────────────────────────────── */}
-      <div style={card}>
-        <SectionHeading color="var(--accent)">{isZh ? '语言设置' : 'Language Settings'}</SectionHeading>
-        <div style={{ maxWidth: 320 }}>
-          <label style={label}>{isZh ? '默认语言' : 'Default Language'}</label>
-          <select
-            style={select}
-            value={allLanguages.find(l => l.isDefault)?.id ?? ''}
-            onChange={(e) => handleSetDefault(Number(e.target.value))}
-          >
-            {allLanguages.filter(l => l.isActive).map(l => (
-              <option key={l.id} value={l.id}>
-                {l.nameNative} ({l.code.toUpperCase()})
-                {l.isDefault ? (isZh ? ' — 当前默认' : ' — current default') : ''}
-              </option>
-            ))}
-          </select>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>
-            {isZh ? '新用户首次访问时将看到此语言。' : 'First-time visitors see this language. Users can always switch via the dropdown.'}
-          </div>
+      {/* ── 1. DEFAULT LANGUAGE ────────────────────────────────────────────── */}
+      <div style={cardSt}>
+        <SectionHeading color="var(--accent)" label={t('lt_default_lang_section', 'Default Language')} />
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.6 }}>
+          {t('lt_default_lang_desc', 'All content is authored in this language. Kimi translates from here to every new language.')}
         </div>
-      </div>
-
-      {/* ── 2. ACTIVE LANGUAGES TABLE ────────────────────────────────────── */}
-      <div style={card}>
-        <SectionHeading color="var(--blue)">{isZh ? '语言管理' : 'Active Languages'}</SectionHeading>
-        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
-          {/* Header */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 120px 50px 80px 90px', gap: 8, padding: '8px 12px', background: 'var(--bg-overlay)', borderBottom: '1px solid var(--border)', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-            <span>{isZh ? '语言' : 'Language'}</span>
-            <span>{isZh ? '代码' : 'Code'}</span>
-            <span>{isZh ? '本地名称' : 'Native Name'}</span>
-            <span>RTL</span>
-            <span>{isZh ? '状态' : 'Status'}</span>
-            <span>{isZh ? '操作' : 'Actions'}</span>
-          </div>
-
-          {allLanguages.map(lang => (
-            <React.Fragment key={lang.id}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 120px 50px 80px 90px', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)', alignItems: 'center' }}>
-                <div>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{lang.name}</span>
-                  {lang.isDefault && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid rgba(63,185,80,0.3)' }}>{isZh ? '默认' : 'DEFAULT'}</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {defaultLangObj ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', flex: 1 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {defaultLangObj.nameNative} ({defaultLangObj.name})
                 </div>
-                <span style={{ fontSize: 12, fontFamily: "'DM Mono', monospace", color: 'var(--text-secondary)' }}>{lang.code.toUpperCase()}</span>
-                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{lang.nameNative}</span>
-                <span style={{ fontSize: 12 }}>{lang.isRtl ? <span style={{ color: 'var(--orange)' }}>RTL</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</span>
-                <span>
-                  {lang.code === 'en' ? (
-                    <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: 'var(--bg-overlay)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>{isZh ? '受保护' : 'Protected'}</span>
-                  ) : (
-                    <button
-                      onClick={() => handleToggleActive(lang)}
-                      style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', border: 'none', fontWeight: 600, background: lang.isActive ? 'rgba(16,185,129,0.15)' : 'var(--bg-overlay)', color: lang.isActive ? 'var(--accent)' : 'var(--text-muted)' }}
-                    >
-                      {lang.isActive ? (isZh ? '已激活' : 'Active') : (isZh ? '已停用' : 'Inactive')}
-                    </button>
-                  )}
-                </span>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button
-                    onClick={() => editingId === lang.id ? setEditingId(null) : openEdit(lang)}
-                    style={{ padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: 11, cursor: 'pointer' }}
-                  >
-                    {editingId === lang.id ? (isZh ? '取消' : 'Cancel') : (isZh ? '编辑' : 'Edit')}
-                  </button>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {defaultLangObj.code.toUpperCase()} {defaultLangObj.isRtl ? `· ${t('lt_rtl', 'RTL')}` : ''}
                 </div>
               </div>
-
-              {/* Inline edit row */}
-              {editingId === lang.id && (
-                <div style={{ padding: '12px 14px', background: 'var(--bg-overlay)', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: 10, alignItems: 'flex-end' }}>
-                  <div>
-                    <label style={label}>{isZh ? '英文名称' : 'English Name'}</label>
-                    <input style={input} value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label style={label}>{isZh ? '本地名称' : 'Native Name'}</label>
-                    <input style={input} value={editForm.nameNative} onChange={e => setEditForm(p => ({ ...p, nameNative: e.target.value }))} />
-                  </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer', paddingBottom: 2 }}>
-                    <input type="checkbox" checked={editForm.isRtl} onChange={e => setEditForm(p => ({ ...p, isRtl: e.target.checked }))} />
-                    RTL
-                  </label>
-                  <button
-                    onClick={handleSaveEdit}
-                    disabled={saving}
-                    style={{ padding: '8px 14px', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: 'var(--text-inverse)', border: 'none', fontSize: 12, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
-                  >
-                    {saving ? '…' : (isZh ? '保存' : 'Save')}
-                  </button>
-                </div>
-              )}
-            </React.Fragment>
-          ))}
-        </div>
-      </div>
-
-      {/* ── 3. ADD LANGUAGE ──────────────────────────────────────────────── */}
-      <div style={card}>
-        <SectionHeading color="var(--purple)">{isZh ? '添加语言' : 'Add Language'}</SectionHeading>
-
-        {/* Preset search */}
-        <div style={{ marginBottom: 12, position: 'relative' }}>
-          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><Icons.search size={13} /></span>
-          <input
-            style={{ ...input, paddingLeft: 32 }}
-            value={presetQuery}
-            onChange={e => setPresetQuery(e.target.value)}
-            placeholder={isZh ? '搜索语言…' : 'Search languages…'}
-          />
-        </div>
-
-        {/* Preset grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 6, maxHeight: 240, overflowY: 'auto', marginBottom: 14 }}>
-          {filteredPresets.map(preset => (
-            <button
-              key={preset.code}
-              onClick={() => selectPreset(preset)}
-              style={{
-                padding: '8px 10px', borderRadius: 'var(--radius-sm)', textAlign: 'left', cursor: 'pointer',
-                border: selectedPreset === preset.code ? '1px solid var(--accent)' : '1px solid var(--border)',
-                background: selectedPreset === preset.code ? 'var(--accent-dim)' : 'var(--bg-overlay)',
-                transition: 'all var(--transition)',
-              }}
-            >
-              <div style={{ fontSize: 12, fontWeight: 600, color: selectedPreset === preset.code ? 'var(--accent)' : 'var(--text-primary)', marginBottom: 2 }}>{preset.name}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{preset.nameNative}</div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, display: 'flex', gap: 4 }}>
-                <span style={{ fontFamily: "'DM Mono', monospace" }}>{preset.code.toUpperCase()}</span>
-                {preset.isRtl && <span style={{ color: 'var(--orange)' }}>RTL</span>}
-              </div>
-            </button>
-          ))}
-          {filteredPresets.length === 0 && (
-            <div style={{ gridColumn: '1 / -1', padding: '16px', fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
-              {isZh ? '未找到语言。使用下方自定义表单手动输入。' : 'Language not found. Use the form below to enter it manually.'}
+              <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid rgba(99,102,241,0.3)' }}>
+                {t('lt_default_badge', 'Default')}
+              </span>
             </div>
+          ) : (
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{t('lt_loading', 'Loading…')}</div>
           )}
         </div>
+      </div>
 
-        {/* Custom entry toggle */}
-        <button
-          onClick={() => { setShowAddForm(!showAddForm); if (!showAddForm) setSelectedPreset(null); }}
-          style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: showAddForm ? 12 : 0, textDecoration: 'underline' }}
-        >
-          {showAddForm ? (isZh ? '收起' : 'Collapse') : (isZh ? '不在列表中？手动输入' : 'Not in list? Enter manually')}
-        </button>
+      {/* ── 2. ACTIVE LANGUAGES ───────────────────────────────────────────── */}
+      <div style={cardSt}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <SectionHeading color="var(--blue)" label={t('lt_active_languages', 'Active Languages')} />
+          <button onClick={() => setShowAddForm(!showAddForm)}
+            style={{ padding: '6px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--accent)', background: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Icons.plus size={13} /> {t('lt_add_language', 'Add Language')}
+          </button>
+        </div>
 
-        {/* Add form — shown after preset selection or manual toggle */}
+        {/* Language list */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: showAddForm ? 14 : 0 }}>
+          {allLanguages.map(lang => (
+            <div key={lang.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {lang.nameNative}
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>({lang.name})</span>
+                  {lang.isDefault && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: 'var(--accent-dim)', color: 'var(--accent)' }}>
+                      {t('lt_default_badge', 'Default')}
+                    </span>
+                  )}
+                  {lang.isRtl && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: 'var(--bg-elevated)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+                      {t('lt_rtl', 'RTL')}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{lang.code.toUpperCase()}</div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 6 }}>
+                {!lang.isDefault && (
+                  <button onClick={() => handleSetDefault(lang.id, lang.code)}
+                    style={{ padding: '5px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: 11, cursor: 'pointer' }}>
+                    {t('lt_set_default', 'Set Default')}
+                  </button>
+                )}
+                <button onClick={() => handleToggleActive(lang)}
+                  style={{ padding: '5px 12px', borderRadius: 'var(--radius-sm)', border: `1px solid ${lang.isActive ? 'var(--accent)' : 'var(--border)'}`, background: 'none', color: lang.isActive ? 'var(--accent)' : 'var(--text-muted)', fontSize: 11, cursor: 'pointer' }}>
+                  {lang.isActive ? t('lt_lang_activated', 'Active') : t('lt_lang_deactivated', 'Inactive')}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Add language form */}
         {showAddForm && (
-          <div style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '14px 14px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-              <div>
-                <label style={label}>{isZh ? 'ISO 代码' : 'ISO Code'}</label>
-                <input style={input} value={addForm.code} onChange={e => setAddForm(p => ({ ...p, code: e.target.value.toLowerCase() }))} placeholder="e.g. fr" maxLength={8} />
-              </div>
-              <div>
-                <label style={label}>{isZh ? '英文名称' : 'English Name'}</label>
-                <input style={input} value={addForm.name} onChange={e => setAddForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. French" />
-              </div>
+          <div style={{ padding: 14, background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginTop: 8 }}>
+
+            {/* Step 1 — select from list */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={labelSt}>{t('lt_select_language', 'Select Language')}</label>
+              <select
+                value={selectedLookupKey}
+                onChange={e => handleLookupSelect(e.target.value)}
+                style={selectSt}
+              >
+                <option value="">{t('lt_select_language', 'Select a language…')}</option>
+                {Object.entries(LANG_LOOKUP)
+                  .filter(([code]) => !allLanguages.some(l => l.code === code))
+                  .sort(([, a], [, b]) => a.name.localeCompare(b.name))
+                  .map(([code, entry]) => (
+                    <option key={code} value={code}>
+                      {entry.name} — {entry.nameNative}
+                    </option>
+                  ))}
+                <option value="__custom__">{t('lt_custom_language', 'Other / Custom (enter manually)')}</option>
+              </select>
             </div>
-            <div style={{ marginBottom: 10 }}>
-              <label style={label}>{isZh ? '本地名称（自动填写）' : 'Native Name (auto-filled)'}</label>
-              <input style={input} value={addForm.nameNative} onChange={e => setAddForm(p => ({ ...p, nameNative: e.target.value }))} placeholder="e.g. Français" />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={addForm.isRtl} onChange={e => setAddForm(p => ({ ...p, isRtl: e.target.checked }))} />
-                {isZh ? '从右到左（RTL）语言' : 'Right-to-left (RTL) language'}
-              </label>
+
+            {/* Step 2 — confirm or override the filled fields */}
+            {selectedLookupKey !== '' && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr', gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <label style={labelSt}>{t('lt_lang_code', 'Language Code')}</label>
+                    <input
+                      value={newCode}
+                      onChange={e => setNewCode(e.target.value)}
+                      placeholder="fr"
+                      maxLength={10}
+                      style={{ ...inputSt, background: selectedLookupKey !== '__custom__' ? 'rgba(5,150,105,0.06)' : 'var(--bg-input)' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelSt}>{t('lt_lang_name_en', 'Language Name (English)')}</label>
+                    <input
+                      value={newName}
+                      onChange={e => setNewName(e.target.value)}
+                      placeholder="French"
+                      style={{ ...inputSt, background: selectedLookupKey !== '__custom__' ? 'rgba(5,150,105,0.06)' : 'var(--bg-input)' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelSt}>{t('lt_lang_name_native', 'Native Name')}</label>
+                    <input
+                      value={newNative}
+                      onChange={e => setNewNative(e.target.value)}
+                      placeholder="Français"
+                      style={{ ...inputSt, background: selectedLookupKey !== '__custom__' ? 'rgba(5,150,105,0.06)' : 'var(--bg-input)' }}
+                    />
+                  </div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer', marginBottom: 12 }}>
+                  <input type="checkbox" checked={newRtl} onChange={e => setNewRtl(e.target.checked)} />
+                  {t('lt_rtl_direction', 'Right-to-left text direction')}
+                  {newRtl && <span style={{ fontSize: 10, color: 'var(--orange)', marginLeft: 4 }}>RTL layout will be applied</span>}
+                </label>
+              </>
+            )}
+
+            <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={handleAddLanguage}
-                disabled={addSaving || !addForm.code.trim() || !addForm.name.trim()}
-                style={{ padding: '8px 18px', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: 'var(--text-inverse)', border: 'none', fontSize: 13, fontWeight: 600, cursor: addSaving || !addForm.code.trim() ? 'not-allowed' : 'pointer', opacity: addSaving || !addForm.code.trim() ? 0.6 : 1 }}
-              >
-                {addSaving ? '…' : (isZh ? '添加语言' : 'Add Language')}
+                disabled={!newCode.trim() || !newName.trim() || !newNative.trim()}
+                style={{ padding: '8px 16px', borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--accent)', color: 'var(--text-inverse)', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: (!newCode.trim() || !newName.trim() || !newNative.trim()) ? 0.5 : 1 }}>
+                {t('lt_add_btn', 'Add')}
               </button>
-            </div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 8 }}>
-              {isZh ? '新语言默认为停用状态。翻译完成后，在上方语言管理表格中激活它。' : 'New languages start as inactive. After translating in Section 4 below, activate it in the table above.'}
+              <button
+                onClick={() => { setShowAddForm(false); setSelectedLookupKey(''); setNewCode(''); setNewName(''); setNewNative(''); setNewRtl(false); }}
+                style={{ padding: '8px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}>
+                {t('lt_cancel', 'Cancel')}
+              </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* ── 4. KIMI TRANSLATION ──────────────────────────────────────────── */}
-      <div style={card}>
-        <SectionHeading color="var(--cyan)">{isZh ? 'Kimi 全站翻译' : 'Kimi Full-Site Translation'}</SectionHeading>
+      {/* ── 3. AI TRANSLATION ─────────────────────────────────────────────── */}
+      <div style={cardSt}>
+        <SectionHeading color="var(--purple)" label={t('lt_ai_translation', 'AI Translation')} />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          {/* Source (read-only = default language) */}
           <div>
-            <label style={label}>{isZh ? '源语言' : 'Source Language'}</label>
-            <div style={{ ...input, color: 'var(--text-muted)', background: 'var(--bg-overlay)' }}>English (EN)</div>
+            <label style={labelSt}>{t('lt_source_label', 'Source')}</label>
+            <div style={{ ...inputSt, background: 'var(--bg-overlay)', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+              {defaultLangObj ? `${defaultLangObj.nameNative} (${defaultLangObj.code.toUpperCase()})` : defaultLang.toUpperCase()}
+            </div>
           </div>
+          {/* Target */}
           <div>
-            <label style={label}>{isZh ? '目标语言' : 'Target Language'}</label>
-            <select style={select} value={targetCode} onChange={e => setTargetCode(e.target.value)}>
-              <option value="">{isZh ? '请选择…' : 'Select a language…'}</option>
-              {allLanguages.filter(l => l.code !== 'en').map(l => (
-                <option key={l.code} value={l.code}>
-                  {l.nameNative} ({l.code.toUpperCase()}) {!l.isActive ? (isZh ? '（未激活）' : '(inactive)') : ''}
-                </option>
+            <label style={labelSt}>{t('lt_target_lang', 'Target Language')}</label>
+            <select value={targetCode} onChange={e => { setTargetCode(e.target.value); setRows([]); }} style={selectSt}>
+              <option value="">{t('lt_translate_to', 'Translate to')}…</option>
+              {allLanguages.filter(l => l.code !== defaultLang && l.isActive).map(l => (
+                <option key={l.id} value={l.code}>{l.nameNative} ({l.code.toUpperCase()})</option>
               ))}
             </select>
           </div>
         </div>
 
-        {/* Scope */}
-        <div style={{ marginBottom: 14 }}>
-          <label style={label}>{isZh ? '翻译范围' : 'Translation Scope'}</label>
-          <div style={{ display: 'flex', gap: 16 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={includeUi} onChange={e => setIncludeUi(e.target.checked)} />
-              {isZh ? 'UI 文字（导航、按钮标签等）' : 'UI Strings (navigation, button labels, etc.)'}
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={includeLocale} onChange={e => setIncludeLocale(e.target.checked)} />
-              {isZh ? '本地化内容（团队数据、概览内容）' : 'Locale Content (team data, overview content)'}
-            </label>
-          </div>
-        </div>
-
-        {/* Pre-flight button */}
-        {!preflightDone && !translating && (
-          <button
-            onClick={runPreflight}
-            disabled={preflighting || !targetCode || (!includeUi && !includeLocale)}
-            style={{ padding: '9px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-overlay)', color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500, cursor: preflighting || !targetCode ? 'not-allowed' : 'pointer', opacity: preflighting || !targetCode ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 8 }}
-          >
-            {preflighting ? <><span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>↻</span> {isZh ? '检查中…' : 'Checking…'}</> : (isZh ? '检查现有内容' : 'Check Existing Content')}
+        {/* Pre-flight */}
+        {targetCode && !running && rows.length === 0 && (
+          <button onClick={handlePreflight}
+            style={{ padding: '9px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--blue)', background: 'none', color: 'var(--blue)', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 14 }}>
+            {t('lt_preflight', 'Pre-flight check…')}
           </button>
         )}
 
-        {/* Preflight results */}
-        {preflightDone && !translating && (
-          <div>
-            {includeLocale && sections.length > 0 && (
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
-                  {isZh ? `本地化内容：共 ${sections.length} 个区块` : `Locale Content: ${sections.length} sections found`}
-                  {sections.filter(s => s.hasTarget).length > 0 && (
-                    <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--orange)', fontWeight: 400 }}>
-                      {sections.filter(s => s.hasTarget).length} {isZh ? '个已有翻译（将覆盖）' : 'already have translations (will overwrite if checked)'}
-                    </span>
-                  )}
-                </div>
-                <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', maxHeight: 200, overflowY: 'auto' }}>
-                  {sections.map((s, i) => (
-                    <label key={s.sectionPath} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderBottom: i < sections.length - 1 ? '1px solid var(--border-subtle)' : 'none', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={s.confirm} onChange={e => setSections(prev => prev.map((p, pi) => pi === i ? { ...p, confirm: e.target.checked } : p))} />
-                      <span style={{ fontSize: 12, color: 'var(--text-secondary)', flex: 1, fontFamily: "'DM Mono', monospace" }}>{s.sectionPath}</span>
-                      {s.hasTarget && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.1)', color: 'var(--orange)', border: '1px solid rgba(245,158,11,0.3)' }}>{isZh ? '已存在' : 'Exists'}</span>}
-                    </label>
-                  ))}
-                </div>
-                <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
-                  <button onClick={() => setSections(p => p.map(s => ({ ...s, confirm: true  })))} style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>{isZh ? '全选' : 'Select all'}</button>
-                  <button onClick={() => setSections(p => p.map(s => ({ ...s, confirm: false })))} style={{ fontSize: 11, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>{isZh ? '取消全选' : 'Deselect all'}</button>
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <button
-                onClick={runTranslation}
-                disabled={!includeUi && sections.filter(s => s.confirm).length === 0}
-                style={{ padding: '10px 20px', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: 'var(--text-inverse)', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
-              >
-                <Icons.robot size={14} />
-                {isZh ? '开始翻译' : 'Start Translation'}
-              </button>
-              <button onClick={() => { setPreflightDone(false); setSections([]); }} style={{ fontSize: 12, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
-                {isZh ? '重新检查' : 'Re-check'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Translation progress */}
-        {(translating || (log.length > 0 && !translating)) && (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
-                {translating ? (isZh ? '翻译中…' : 'Translating…') : (isZh ? '翻译完成' : 'Translation complete')}
-              </span>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{progress}%</span>
-            </div>
-            <div style={{ height: 6, background: 'var(--bg-overlay)', borderRadius: 3, overflow: 'hidden', marginBottom: 10 }}>
-              <div style={{ height: '100%', width: `${progress}%`, background: 'var(--accent)', borderRadius: 3, transition: 'width 0.3s ease' }} />
-            </div>
-            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', maxHeight: 180, overflowY: 'auto' }}>
-              {log.map((item, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderBottom: i < log.length - 1 ? '1px solid var(--border-subtle)' : 'none', fontSize: 12 }}>
-                  <span style={{ flexShrink: 0, color: item.status === 'done' ? 'var(--accent)' : item.status === 'error' ? 'var(--red)' : 'var(--text-muted)' }}>
-                    {item.status === 'done' ? '✓' : item.status === 'error' ? '✗' : '…'}
+        {/* Translation rows */}
+        {rows.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', marginBottom: 12 }}>
+              {rows.map((row, i) => (
+                <div key={row.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: i < rows.length - 1 ? '1px solid var(--border-subtle)' : 'none', background: row.status === 'translating' ? 'rgba(99,102,241,0.05)' : 'transparent' }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[row.status], flexShrink: 0 }} />
+                  <span style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)', fontFamily: "'DM Mono', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {row.label}
                   </span>
-                  <span style={{ color: 'var(--text-secondary)', fontFamily: "'DM Mono', monospace", flex: 1 }}>{item.path}</span>
-                  {item.status === 'error' && <span style={{ fontSize: 11, color: 'var(--red)' }}>{isZh ? '失败' : 'failed'}</span>}
+                  <span style={{ fontSize: 11, color: STATUS_COLOR[row.status], fontWeight: 600, flexShrink: 0 }}>
+                    {row.status === 'pending'     && t('lt_pending',         'Pending')}
+                    {row.status === 'translating' && t('lt_translating_item','Translating')}
+                    {row.status === 'done'        && t('lt_done',            'Done')}
+                    {row.status === 'error'       && t('lt_error',           'Error')}
+                  </span>
                 </div>
               ))}
             </div>
-            {!translating && (
-              <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-muted)' }}>
-                {isZh
-                  ? '翻译完成后，请前往上方语言管理表格激活该语言，使其对用户可见。'
-                  : 'Translation done. Go to the language table above and activate the language to make it visible to users.'}
+
+            {/* Progress bar */}
+            {(running || progress > 0) && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+                  <span>{running ? t('lt_translating_status', 'Translating…') : t('lt_complete', 'Translation complete')}</span>
+                  <span>{progress}%</span>
+                </div>
+                <div style={{ height: 4, background: 'var(--bg-overlay)', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', background: running ? 'var(--accent)' : '#059669', width: `${progress}%`, transition: 'width 0.3s ease', borderRadius: 2 }} />
+                </div>
               </div>
+            )}
+
+            {!running ? (
+              <button onClick={handleStartTranslation}
+                style={{ padding: '9px 22px', borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--accent)', color: 'var(--text-inverse)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                {t('lt_start', 'Start Translation')}
+              </button>
+            ) : (
+              <button onClick={handleStop}
+                style={{ padding: '9px 22px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--red)', background: 'none', color: 'var(--red)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                {t('lt_stop', 'Stop')}
+              </button>
             )}
           </div>
         )}
-
-        {/* Disclaimer */}
-        <div style={{ marginTop: 14, padding: '8px 12px', background: 'var(--bg-overlay)', borderRadius: 'var(--radius-sm)', fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-          {isZh
-            ? 'AI 翻译仅供参考。建议在激活语言前，由母语用户审阅翻译内容。'
-            : 'AI translation is a starting point. Review output with a native speaker before activating the language for users.'}
-        </div>
       </div>
-
     </div>
   );
-};
-
-export default React.memo(LanguageTranslationTab);
+}

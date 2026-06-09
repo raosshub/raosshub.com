@@ -79,37 +79,28 @@ export const authApi = {
 
 // ─── i18n content API ─────────────────────────────────────────────────────
 export const i18nApi = {
-  getLanguages:    () => api.get('/languages'),
-  getUiStrings:    (lang: string) => api.get('/ui-strings', { params: { lang } }),
-  getLocale:       (lang: string) => api.get(`/locales/${lang}`),
-  getLocaleSection:(lang: string, sectionPath: string) =>
-                     api.get(`/locales/${lang}/${sectionPath}`),
-  /**
-   * Returns locale content as a flat list of {sectionPath, content} records.
-   * Used by Tab 2 Kimi translation runner.
-   */
-  getSections:     (lang: string) => api.get(`/locales/${lang}/sections`),
+  getLanguages:     () => api.get('/languages'),
+  getUiStrings:     (lang: string) => api.get('/ui-strings', { params: { lang } }),
+  getLocale:        (lang: string) => api.get(`/locales/${lang}`),
+  getLocaleSection: (lang: string, sectionPath: string) =>
+                      api.get(`/locales/${lang}/${sectionPath}`),
+  getSections:      (lang: string) => api.get(`/locales/${lang}/sections`),
   saveLocaleContent:(lang: string, sectionPath: string, content: unknown, updatedBy: string) =>
-                     api.post(`/locales/${lang}`, { sectionPath, content, updatedBy }),
-  saveUiString:    (key: string, languageCode: string, value: string) =>
-                     api.post('/ui-strings', { key, languageCode, value }),
+                      api.post(`/locales/${lang}`, { sectionPath, content, updatedBy }),
+  saveUiString:     (key: string, languageCode: string, value: string) =>
+                      api.post('/ui-strings', { key, languageCode, value }),
 };
 
 // ─── Language management API (superadmin) ─────────────────────────────────
-// Separated from i18nApi because these endpoints require SUPERADMIN auth.
-// The public i18nApi.getLanguages() uses GET /api/languages (public).
-// languageApi.getAll() uses GET /api/languages/all (superadmin).
 export const languageApi = {
-  getAll:    () =>
-               api.get('/languages/all'),
+  getAll:    () => api.get('/languages/all'),
   create:    (data: { code: string; name: string; nameNative: string; isRtl: boolean }) =>
                api.post('/languages', data),
   update:    (id: number, data: {
                name?: string; nameNative?: string; isRtl?: boolean; isActive?: boolean;
              }) =>
                api.put(`/languages/${id}`, data),
-  setDefault:(id: number) =>
-               api.patch(`/languages/${id}/default`),
+  setDefault:(id: number) => api.patch(`/languages/${id}/default`),
 };
 
 // ─── User API ──────────────────────────────────────────────────────────────
@@ -132,6 +123,13 @@ export const teamApi = {
 export const configApi = {
   get:  () => api.get('/config'),
   save: (config: Record<string, unknown>) => api.post('/config', config),
+
+  // SMTP test — backend opens TCP socket to host:port and returns { success, message }
+  testSmtp:     () => api.post('/config/smtp/test'),
+
+  // Danger Zone — confirmation tokens must match server-side check exactly
+  resetData:    () => api.post('/config/reset-data',    { confirm: 'RESET' }),
+  factoryReset: () => api.post('/config/factory-reset', { confirm: 'FACTORY RESET' }),
 };
 
 // ─── Audit API ─────────────────────────────────────────────────────────────
@@ -156,10 +154,6 @@ export const fileApi = {
 export const kimiApi = {
   chat: (body: Record<string, unknown>) => api.post('/kimi', body),
 
-  /**
-   * Streaming — returns raw Response for progressive SSE rendering.
-   * Used by HubAssistPage. Auth token attached manually (not via Axios).
-   */
   stream: (body: Record<string, unknown>): Promise<Response> => {
     const token = getApiToken();
     return fetch('/api/kimi/stream', {

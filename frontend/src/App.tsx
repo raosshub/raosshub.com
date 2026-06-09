@@ -4,7 +4,7 @@ import './styles/global.css';
 import { useAuthStore }   from '@/stores/useAuthStore';
 import { useI18nStore }   from '@/stores/useI18nStore';
 import { useThemeStore }  from '@/stores/useThemeStore';
-import { healthApi }      from '@/utils/api';
+import { healthApi, setApiToken } from '@/utils/api';
 import LoadingScreen      from '@/components/LoadingScreen';
 import LoginScreen        from '@/components/LoginScreen';
 import NDAModal           from '@/components/NDAModal';
@@ -18,11 +18,7 @@ import ActivityLogPage    from '@/pages/ActivityLogPage';
 import ProjectConfigPage  from '@/pages/ProjectConfigPage';
 import AdminSetupPage     from '@/pages/admin/AdminSetupPage';
 
-// initStage has three states only — there is NO separate 'nda' stage.
-// NDAModal renders as a modal overlay on top of AppLayout.
-// When acceptNda() sets ndaAccepted = true, the overlay condition becomes
-// false and the modal disappears. AppLayout is already mounted underneath.
-// A separate 'nda' stage causes the stuck bug: nothing ever transitions out.
+// Three init stages only — NDAModal renders as overlay on the app stage.
 type InitStage = 'loading' | 'login' | 'app';
 
 function App() {
@@ -34,6 +30,7 @@ function App() {
   const [loadingText, setLoadingText] = useState('Initialising...');
   const [, setBackendOnline]          = useState(false);
 
+  // ─── Initialisation ────────────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
       applyTheme();
@@ -42,17 +39,30 @@ function App() {
       try { await healthApi.check(); setBackendOnline(true); }
       catch { setBackendOnline(false); }
 
+      // Resolve language from localStorage or DB default, then load UI strings
       setLoadingText('Loading languages...');
       await loadLanguages();
       await loadUiStrings();
 
+      // ── Hard-refresh fix ────────────────────────────────────────────────
+      // api.ts uses module-level _accessToken which resets to null on every
+      // page load. Without this line, every API call would get 401 and wait
+      // for the Axios refresh dance before succeeding. Setting it here
+      // immediately means fetchMe() and loadLocale() work on the first try.
+      // If the token is expired the backend returns 401 anyway, the Axios
+      // interceptor fires, refreshes, and updates _accessToken with a new one.
       setLoadingText('Checking credentials...');
-      const token = localStorage.getItem('hub_token');
-      if (token) {
+      const storedToken = localStorage.getItem('hub_token');
+      if (storedToken) {
+        setApiToken(storedToken); // set in memory immediately — no 401 dance needed
         try {
           await fetchMe();
+          // Locale content requires auth — load only after successful fetchMe.
+          // loadLocale falls back to EN if the selected language has no content.
           await loadLocale();
-        } catch { logout(); }
+        } catch {
+          logout();
+        }
       }
 
       setLoadingText('Ready');
@@ -65,9 +75,11 @@ function App() {
         }
       }, 400);
     };
+
     init();
   }, []);
 
+  // ─── Login → app transition ────────────────────────────────────────────────
   useEffect(() => {
     if (isAuthenticated && initStage === 'login') {
       loadLocale().then(() => { checkNda(); setInitStage('app'); });
@@ -77,15 +89,19 @@ function App() {
     }
   }, [isAuthenticated]);
 
+  // ─── Global logout event ──────────────────────────────────────────────────
   useEffect(() => {
     const handler = () => { logout(); setInitStage('login'); };
     window.addEventListener('auth:logout', handler);
     return () => window.removeEventListener('auth:logout', handler);
   }, []);
 
+  // ─── Render ───────────────────────────────────────────────────────────────
   if (initStage === 'loading') return <LoadingScreen text={loadingText} />;
   if (initStage === 'login')   return <><LoginScreen /><ToastContainer /></>;
 
+  // NDAModal is an overlay on the app — when ndaAccepted flips to true the
+  // overlay disappears; AppLayout is always mounted in the app stage.
   return (
     <>
       <ToastContainer />
