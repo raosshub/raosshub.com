@@ -30,10 +30,11 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface TranslationRow {
-  key:    string;
-  label:  string;
-  status: 'pending' | 'translating' | 'done' | 'error';
-  error?: string;
+  key:      string;
+  label:    string;
+  status:   'pending' | 'translating' | 'done' | 'error';
+  selected: boolean;
+  error?:   string;
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -198,7 +199,7 @@ export default function LanguageTranslationTab() {
       const uiRes = await i18nApi.getUiStrings(defaultLang);
       const keys  = Object.keys(uiRes.data.data || {});
       if (keys.length > 0) {
-        newRows.push({ key: '__ui_strings__', label: t('lt_ui_strings_label', 'UI Strings') + ` (${keys.length})`, status: 'pending' });
+        newRows.push({ key: '__ui_strings__', label: t('lt_ui_strings_label', 'UI Strings') + ` (${keys.length})`, status: 'pending', selected: true });
       }
     } catch {}
 
@@ -207,7 +208,7 @@ export default function LanguageTranslationTab() {
       const secRes  = await i18nApi.getSections(defaultLang);
       const sections: string[] = secRes.data.data || [];
       sections.forEach(path => {
-        newRows.push({ key: path, label: path, status: 'pending' });
+        newRows.push({ key: path, label: path, status: 'pending', selected: true });
       });
     } catch {}
 
@@ -222,14 +223,15 @@ export default function LanguageTranslationTab() {
   // SOURCE is always defaultLang. TARGET is the selected targetCode.
   // If targetCode === defaultLang, translation is a no-op (same language).
   const handleStartTranslation = useCallback(async () => {
-    if (!targetCode || rows.length === 0 || running) return;
+    const selectedRows = rows.filter(r => r.selected);
+    if (!targetCode || selectedRows.length === 0 || running) return;
 
     abortRef.current = false;
     setRunning(true);
     setProgress(0);
 
     let done = 0;
-    const total = rows.length;
+    const total = selectedRows.length;
 
     // Determine source language name for Kimi prompt
     const sourceLang = allLanguages.find(l => l.code === defaultLang);
@@ -237,7 +239,7 @@ export default function LanguageTranslationTab() {
     const sourceLabel = sourceLang?.name || defaultLang;
     const targetLabel = targetLang?.name || targetCode;
 
-    for (const row of rows) {
+    for (const row of selectedRows) {
       if (abortRef.current) { break; }
 
       updateRow(row.key, { status: 'translating' });
@@ -540,10 +542,39 @@ export default function LanguageTranslationTab() {
         {rows.length > 0 && (
           <div style={{ marginBottom: 14 }}>
             <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', marginBottom: 12 }}>
+
+              {/* Header bar — select all / none + count */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg-overlay)' }}>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  {rows.filter(r => r.selected).length} / {rows.length} {t('lt_selected', 'selected')}
+                </span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button disabled={running}
+                    onClick={() => setRows(prev => prev.map(r => ({ ...r, selected: true })))}
+                    style={{ padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: 11, cursor: running ? 'not-allowed' : 'pointer', opacity: running ? 0.4 : 1 }}>
+                    {t('lt_select_all', 'All')}
+                  </button>
+                  <button disabled={running}
+                    onClick={() => setRows(prev => prev.map(r => ({ ...r, selected: false })))}
+                    style={{ padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: 11, cursor: running ? 'not-allowed' : 'pointer', opacity: running ? 0.4 : 1 }}>
+                    {t('lt_select_none', 'None')}
+                  </button>
+                </div>
+              </div>
+
               {rows.map((row, i) => (
                 <div key={row.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: i < rows.length - 1 ? '1px solid var(--border-subtle)' : 'none', background: row.status === 'translating' ? 'rgba(99,102,241,0.05)' : 'transparent' }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[row.status], flexShrink: 0 }} />
-                  <span style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)', fontFamily: "'DM Mono', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+
+                  {/* Progress circle when translating; checkbox otherwise */}
+                  {row.status === 'translating' ? (
+                    <span style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid var(--orange)', borderTopColor: 'transparent', flexShrink: 0, display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
+                  ) : (
+                    <input type="checkbox" checked={row.selected} disabled={running}
+                      onChange={() => setRows(prev => prev.map(r => r.key === row.key ? { ...r, selected: !r.selected } : r))}
+                      style={{ width: 14, height: 14, flexShrink: 0, cursor: running ? 'not-allowed' : 'pointer', accentColor: 'var(--accent)' }} />
+                  )}
+
+                  <span style={{ flex: 1, fontSize: 11, color: row.selected ? 'var(--text-secondary)' : 'var(--text-muted)', fontFamily: "'DM Mono', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: row.selected ? 1 : 0.5 }}>
                     {row.label}
                   </span>
                   <span style={{ fontSize: 11, color: STATUS_COLOR[row.status], fontWeight: 600, flexShrink: 0 }}>
@@ -571,8 +602,9 @@ export default function LanguageTranslationTab() {
 
             {!running ? (
               <button onClick={handleStartTranslation}
-                style={{ padding: '9px 22px', borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--accent)', color: 'var(--text-inverse)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                {t('lt_start', 'Start Translation')}
+                disabled={rows.filter(r => r.selected).length === 0}
+                style={{ padding: '9px 22px', borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--accent)', color: 'var(--text-inverse)', fontSize: 13, fontWeight: 600, cursor: rows.filter(r => r.selected).length === 0 ? 'not-allowed' : 'pointer', opacity: rows.filter(r => r.selected).length === 0 ? 0.5 : 1 }}>
+                {t('lt_translate_selected', 'Translate Selected')} ({rows.filter(r => r.selected).length})
               </button>
             ) : (
               <button onClick={handleStop}
