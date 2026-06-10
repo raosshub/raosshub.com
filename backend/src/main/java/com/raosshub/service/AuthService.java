@@ -30,14 +30,15 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuthService {
 
-    private final AuthenticationManager authenticationManager;
-    private final JwtTokenProvider tokenProvider;
-    private final UserRepository userRepository;
+    private final AuthenticationManager      authenticationManager;
+    private final JwtTokenProvider           tokenProvider;
+    private final UserRepository             userRepository;
     private final PasswordResetTokenRepository resetTokenRepository;
-    private final NdaAgreementRepository ndaAgreementRepository;
-    // ConfigService removed — was only used for forceOnVersionChange (now deleted)
-    private final PasswordEncoder passwordEncoder;
-    private final AuditLogService auditLogService;
+    private final NdaAgreementRepository     ndaAgreementRepository;
+    // ConfigService removed — was only used for forceOnVersionChange (deleted in v3.1.5)
+    private final PasswordEncoder            passwordEncoder;
+    private final AuditLogService            auditLogService;
+    private final EmailService               emailService;   // ← added in v3.2.0
 
     /**
      * Internal token pair — never serialised to JSON.
@@ -65,8 +66,8 @@ public class AuthService {
             user.setLastLogin(Instant.now());
             userRepository.save(user);
 
-            // NDA is per-session — always clear acceptance on every login.
-            // Version-based enforcement removed.
+            // NDA is per-session — always clear acceptance on login.
+            // Version-based enforcement removed (v3.1.5).
             ndaAgreementRepository.findByUserId(user.getId()).ifPresent(ndaAgreementRepository::delete);
 
             String accessToken  = tokenProvider.generateAccessToken(authentication);
@@ -87,8 +88,6 @@ public class AuthService {
     /**
      * Validates the refresh token from the httpOnly cookie, generates a fresh
      * access token and a new refresh token (rotation), and returns both.
-     * The controller sets the new refresh token as a cookie and returns only
-     * the access token to the client.
      */
     @Transactional
     public AuthTokens refresh(String refreshToken) {
@@ -108,7 +107,6 @@ public class AuthService {
         UsernamePasswordAuthenticationToken auth =
             new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
 
-        // Rotate: issue new access + refresh tokens on every refresh call
         String newAccessToken  = tokenProvider.generateAccessToken(auth);
         String newRefreshToken = tokenProvider.generateRefreshToken(auth);
 
@@ -126,19 +124,28 @@ public class AuthService {
 
     // ─── Password reset ───────────────────────────────────────────────────────
 
+    /**
+     * Generates a 1-hour password reset token and sends the reset email.
+     *
+     * Security: never reveals whether the username exists — the response is
+     * identical for known and unknown users.
+     *
+     * @param request      contains username + lang (user's selected language)
+     * @param frontendUrl  the base URL of the frontend (from Origin header),
+     *                     used to build the reset link: {frontendUrl}/?reset={token}
+     */
     @Transactional
-    public void forgotPassword(ForgotPasswordRequest request) {
+    public void forgotPassword(ForgotPasswordRequest request, String frontendUrl) {
         User user = userRepository.findByUsername(request.getUsername()).orElse(null);
 
         if (user == null) {
-            // Do not reveal whether the account exists
+            // Do not reveal whether the account exists — log only, no email.
             log.info("[Auth] Password reset requested for unknown user: {}", request.getUsername());
             return;
         }
 
         // Invalidate any existing unused tokens for this user.
         // PasswordResetTokenRepository has findByToken() only — no findByUserId().
-        // Use findAll + stream to locate tokens belonging to this user.
         resetTokenRepository.findAll().stream()
             .filter(t -> t.getUser().getId().equals(user.getId()) && !t.getUsed())
             .forEach(t -> {
@@ -153,6 +160,10 @@ public class AuthService {
         resetTokenRepository.save(resetToken);
 
         log.info("[Auth] Password reset token generated for user: {}", user.getUsername());
+
+        // Send reset email (Option A: falls back to console log if SMTP absent)
+        String lang = request.getLang() != null ? request.getLang() : "en";
+        emailService.sendPasswordResetEmail(user, resetToken.getToken(), frontendUrl, lang);
     }
 
     @Transactional

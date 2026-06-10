@@ -128,10 +128,20 @@ public class AuthController {
     }
 
     // ── Forgot / reset password ───────────────────────────────────────────────
+    // Both endpoints are public (no auth required) — SecurityConfig permits them.
+    //
+    // forgotPassword: extracts the frontend base URL from the Origin header so
+    // EmailService can build the correct reset link (e.g. http://localhost:5173
+    // in dev, https://raosshub.com in production). Falls back to localhost:5173
+    // when Origin is absent (e.g. Postman, curl).
     @PostMapping("/forgot-password")
     public ResponseEntity<ApiResponse<Void>> forgotPassword(
-            @Valid @RequestBody ForgotPasswordRequest request) {
-        authService.forgotPassword(request);
+            @Valid @RequestBody ForgotPasswordRequest request,
+            HttpServletRequest httpRequest) {
+        String origin      = httpRequest.getHeader("Origin");
+        String frontendUrl = (origin != null && !origin.isBlank())
+            ? origin : "http://localhost:5173";
+        authService.forgotPassword(request, frontendUrl);
         return ResponseEntity.ok(ApiResponse.ok(null,
             "If the account exists, a reset link has been sent"));
     }

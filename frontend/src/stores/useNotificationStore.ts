@@ -16,6 +16,9 @@ interface NotificationState {
   addToast: (message: string, type?: Toast['type'], title?: string) => void;
   removeToast: (id: string) => void;
   addNotification: (msg: string, type: string, title?: string, msgZh?: string, titleZh?: string) => void;
+  markAllRead: () => void;
+  dismissNotification: (id: string) => void;
+  clearAll: () => void;
 }
 
 export const useNotificationStore = create<NotificationState>((set) => ({
@@ -24,8 +27,16 @@ export const useNotificationStore = create<NotificationState>((set) => ({
 
   addToast: (message, type = 'info', title = '') => {
     const id = `toast_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    set((s) => ({ toasts: [...s.toasts, { id, message, type, title }] }));
-    // Auto-remove after 4s
+    const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    set((s) => ({
+      toasts: [...s.toasts, { id, message, type, title }],
+      // Also push to notification history — this drives the bell badge unread count.
+      // The popup auto-removes after 4s but the history entry stays until dismissed.
+      notifications: [
+        { id, msg: message, type, title, ts, read: false },
+        ...s.notifications,
+      ].slice(0, 20),
+    }));
     setTimeout(() => {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
     }, 4000);
@@ -41,5 +52,17 @@ export const useNotificationStore = create<NotificationState>((set) => ({
     set((s) => ({
       notifications: [{ id, msg, msg_zh: msgZh, type, title, title_zh: titleZh, ts, read: false }, ...s.notifications].slice(0, 20),
     }));
+  },
+
+  markAllRead: () => {
+    set((s) => ({ notifications: s.notifications.map((n) => ({ ...n, read: true })) }));
+  },
+
+  dismissNotification: (id) => {
+    set((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) }));
+  },
+
+  clearAll: () => {
+    set({ notifications: [] });
   },
 }));

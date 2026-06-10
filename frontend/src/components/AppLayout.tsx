@@ -1,12 +1,13 @@
 import React, { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuthStore }   from '@/stores/useAuthStore';
-import { useI18nStore }   from '@/stores/useI18nStore';
-import { useThemeStore }  from '@/stores/useThemeStore';
-import { useConfigStore } from '@/stores/useConfigStore';
-import { teamApi }        from '@/utils/api';
-import type { Team, User } from '@/types';
-import { Icons }          from '@/components/icons';
+import { useAuthStore }            from '@/stores/useAuthStore';
+import { useI18nStore }            from '@/stores/useI18nStore';
+import { useThemeStore }           from '@/stores/useThemeStore';
+import { useConfigStore }          from '@/stores/useConfigStore';
+import { useNotificationStore }    from '@/stores/useNotificationStore';
+import { teamApi }                 from '@/utils/api';
+import type { Team, User }         from '@/types';
+import { Icons }                   from '@/components/icons';
 import { STATUS_OPTIONS, getStatusLabel } from '@/types';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -30,8 +31,39 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { theme, toggleTheme, sidebarCollapsed, toggleSidebar } = useThemeStore();
   const { identity, notifications, loaded, load, getBreadcrumb } = useConfigStore();
 
-  const [teams, setTeams]           = React.useState<Team[]>([]);
+  const [teams, setTeams]             = React.useState<Team[]>([]);
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [trayOpen, setTrayOpen]       = React.useState(false);
+  const bellRef                       = React.useRef<HTMLDivElement>(null);
+
+  const { notifications: notifItems, markAllRead, dismissNotification, clearAll } = useNotificationStore();
+  const unreadCount = notifItems.filter((n) => !n.read).length;
+
+  // Inject pulse keyframe once — used for the unread dot on the bell
+  useEffect(() => {
+    if (!document.getElementById('hub-notif-kf')) {
+      const s = document.createElement('style');
+      s.id = 'hub-notif-kf';
+      s.textContent = `
+        @keyframes hub-pulse {
+          0%,100% { opacity:1; transform:scale(1); }
+          50%      { opacity:0.6; transform:scale(1.35); }
+        }`;
+      document.head.appendChild(s);
+    }
+  }, []);
+
+  // Close tray on outside click
+  useEffect(() => {
+    if (!trayOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) {
+        setTrayOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [trayOpen]);
 
   const isSuperAdmin = (user as User)?.role === 'superadmin';
   const isAdmin      = isSuperAdmin || (user as User)?.role === 'admin';
@@ -225,6 +257,65 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <button onClick={toggleTheme} style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}>
               {theme === 'dark' ? <Icons.sun size={16} /> : <Icons.moon size={16} />}
             </button>
+
+            {/* Notification bell + tray */}
+            <div ref={bellRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => { const next = !trayOpen; setTrayOpen(next); if (next) markAllRead(); }}
+                title={t('notif_title', 'Notifications')}
+                style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: unreadCount > 0 ? 'var(--text-primary)' : 'var(--text-secondary)', background: trayOpen ? 'var(--bg-hover)' : 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
+              >
+                <Icons.bell size={16} />
+                {/* Pulsing red dot — shown when there are unread notifications */}
+                {unreadCount > 0 && (
+                  <span style={{ position: 'absolute', top: 5, right: 5, width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', border: '1.5px solid var(--bg-base)', animation: 'hub-pulse 2s ease-in-out infinite' }} />
+                )}
+              </button>
+
+              {/* Dropdown tray */}
+              {trayOpen && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 300, maxHeight: 380, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', zIndex: 8500, display: 'flex', flexDirection: 'column', animation: 'fadeDown 0.18s ease' }}>
+
+                  {/* Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {t('notif_title', 'Notifications')}
+                    </span>
+                    {notifItems.length > 0 && (
+                      <button onClick={clearAll} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer', padding: '2px 6px' }}>
+                        {t('notif_clear', 'Clear all')}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* List */}
+                  <div style={{ overflowY: 'auto', flex: 1 }}>
+                    {notifItems.length === 0 ? (
+                      <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
+                        {t('notif_empty', 'No notifications')}
+                      </div>
+                    ) : notifItems.map((n) => {
+                      const dot: Record<string, string> = { success: 'var(--accent)', error: 'var(--red)', warning: 'var(--orange)', info: 'var(--blue)' };
+                      const dMsg   = (currentLang === 'zh' && n.msg_zh)   ? n.msg_zh   : n.msg;
+                      const dTitle = (currentLang === 'zh' && n.title_zh) ? n.title_zh : n.title;
+                      return (
+                        <div key={n.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)', opacity: n.read ? 0.55 : 1, transition: 'opacity var(--transition)' }}>
+                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: dot[n.type] || 'var(--blue)', flexShrink: 0, marginTop: 5 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {dTitle && <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2 }}>{dTitle}</div>}
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, wordBreak: 'break-word' }}>{dMsg}</div>
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>{n.ts}</div>
+                          </div>
+                          <button onClick={() => dismissNotification(n.id)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 2, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                            <Icons.close size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* User */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -162,6 +162,12 @@ const IntegrationsTab = React.forwardRef<IntegrationsTabHandle, Props>(
   const handleSmtpTest = useCallback(async () => {
     setSmtpTestState('testing'); setSmtpTestMsg('');
     try {
+      // Auto-save unsaved changes first (same as Kimi test) so the backend
+      // resolveSmtpConfig DB-fallback always has current values.
+      // Wrap in { smtp: ... } so resolveSmtpConfig finds it under the expected
+      // key — the flat form.smtp body was silently falling through to DB and
+      // returning "SMTP host is not configured" when nothing was saved yet.
+      if (hasChanges) await handleSave();
       const res = await configApi.testSmtp(form.smtp as unknown as Record<string, unknown>);
       const d   = res.data?.data as { success: boolean; message: string };
       if (d?.success) { setSmtpTestState('ok');   setSmtpTestMsg(d.message || ''); }
@@ -170,7 +176,7 @@ const IntegrationsTab = React.forwardRef<IntegrationsTabHandle, Props>(
       setSmtpTestState('fail');
       setSmtpTestMsg(e?.response?.data?.message || e?.message || 'Error');
     }
-  }, []);
+  }, [form.smtp, hasChanges, handleSave]);
 
   const handleResetData = useCallback(async () => {
     setResetting(true);
