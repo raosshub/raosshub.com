@@ -236,6 +236,41 @@ const ProjectIdentityTab = React.forwardRef<ProjectIdentityTabHandle, Props>(
     [addToast, updateField, t]
   );
 
+  // Handles product images — supports multiple file selection, no cap.
+  // Uploads each file in sequence; skips oversized files with a toast.
+  const handleProductImagesUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      const maxSizeMB = 10;
+      setUploadTarget('productImages');
+      for (const file of files) {
+        if (file.size > maxSizeMB * 1024 * 1024) {
+          addToast(
+            t('tab1_file_too_large', 'File too large — max {size} MB').replace('{size}', String(maxSizeMB)),
+            'error'
+          );
+          continue;
+        }
+        try {
+          const fd = new FormData();
+          fd.append('file', file);
+          const res = await fileApi.upload(fd);
+          const url = res.data?.data as string;
+          if (url) {
+            setForm(prev => ({ ...prev, productImages: [...prev.productImages, url] }));
+            setHasChanges(true);
+          }
+        } catch {
+          addToast(t('tab1_upload_fail', 'Upload failed'), 'error');
+        }
+      }
+      setUploadTarget(null);
+      e.target.value = '';
+    },
+    [addToast, t]
+  );
+
   const removeImage = useCallback((idx: number) => {
     setForm(prev => ({ ...prev, productImages: prev.productImages.filter((_, i) => i !== idx) }));
     setHasChanges(true);
@@ -415,10 +450,11 @@ const ProjectIdentityTab = React.forwardRef<ProjectIdentityTabHandle, Props>(
         <div style={cardSt}>
           <SectionTitle color="var(--green)" label={t('tab1_section_visuals', 'Product Visuals')} />
 
-          <Field label={`${t('tab1_product_images', 'Product Images')} (${form.productImages.length}/10)`}>
+          <Field label={`${t('tab1_product_images', 'Product Images')} (${form.productImages.length})`}>
             <input ref={productImgInputRef} type="file" accept=".jpg,.jpeg,.png,.webp"
+              multiple
               style={{ display: 'none' }}
-              onChange={e => handleFileUpload(e, 'productImages', 10)} />
+              onChange={handleProductImagesUpload} />
             {form.productImages.length > 0 && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 12 }}>
                 {form.productImages.map((url, idx) => (
@@ -437,11 +473,9 @@ const ProjectIdentityTab = React.forwardRef<ProjectIdentityTabHandle, Props>(
                 ))}
               </div>
             )}
-            {form.productImages.length < 10 && (
-              <UploadZone onClick={() => productImgInputRef.current?.click()}
-                uploading={uploadTarget === 'productImages'}
-                hint={t('tab1_product_images_hint', 'JPG, PNG, WebP — max 10 MB each')} icon="camera" />
-            )}
+            <UploadZone onClick={() => productImgInputRef.current?.click()}
+              uploading={uploadTarget === 'productImages'}
+              hint={t('tab1_product_images_hint', 'JPG, PNG, WebP — max 10 MB each')} icon="camera" />
           </Field>
 
           <Field label={t('tab1_product_model', '3D Model (.glb / .gltf)')}>
