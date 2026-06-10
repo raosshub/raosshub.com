@@ -131,3 +131,20 @@ ON CONFLICT (key, language_code) DO UPDATE SET value = EXCLUDED.value;
 INSERT INTO ui_messages (key, language_code, value) VALUES
   ('reset_err_expired', 'en', 'This reset link has expired or has already been used.')
 ON CONFLICT (key, language_code) DO UPDATE SET value = EXCLUDED.value;
+
+-- Language Translation tab -- section selection (v3.6.0)
+INSERT INTO ui_messages (key, language_code, value) VALUES
+  ('lt_selected', 'en', 'selected')
+ON CONFLICT (key, language_code) DO UPDATE SET value = EXCLUDED.value;
+
+INSERT INTO ui_messages (key, language_code, value) VALUES
+  ('lt_select_all', 'en', 'All')
+ON CONFLICT (key, language_code) DO UPDATE SET value = EXCLUDED.value;
+
+INSERT INTO ui_messages (key, language_code, value) VALUES
+  ('lt_select_none', 'en', 'None')
+ON CONFLICT (key, language_code) DO UPDATE SET value = EXCLUDED.value;
+
+INSERT INTO ui_messages (key, language_code, value) VALUES
+  ('lt_translate_selected', 'en', 'Translate Selected')
+ON CONFLICT (key, language_code) DO UPDATE SET value = EXCLUDED.value;
