@@ -136,11 +136,13 @@ public class AuthService {
      */
     @Transactional
     public void forgotPassword(ForgotPasswordRequest request, String frontendUrl) {
-        User user = userRepository.findByUsername(request.getUsername()).orElse(null);
-
+        // Accept email or username — merge into a single assignment so the
+        // variable is effectively final and usable inside the lambda below.
+        User user = userRepository.findByUsername(request.getUsername())
+            .or(() -> userRepository.findByEmail(request.getUsername()))
+            .orElse(null);
         if (user == null) {
-            // Do not reveal whether the account exists — log only, no email.
-            log.info("[Auth] Password reset requested for unknown user: {}", request.getUsername());
+            log.info("[Auth] Password reset requested for unknown username/email: {}", request.getUsername());
             return;
         }
 
