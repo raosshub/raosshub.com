@@ -619,3 +619,13 @@ CREATE TABLE IF NOT EXISTS translation_jobs (
 CREATE INDEX IF NOT EXISTS idx_trans_status ON translation_jobs(status);
 
 -- ─── Done ──────────────────────────────────────────────────────
+
+
+-- Write permissions for application user raoss
+-- Required for DataInitializer and seed scripts to INSERT/UPDATE.
+-- Placed at end of schema.sql so all tables exist before grants run.
+GRANT USAGE ON SCHEMA public TO raoss;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO raoss;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO raoss;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO raoss;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO raoss;
