@@ -7,10 +7,110 @@
     <meta name="theme-color" content="#0d1117" />
     <title>RAOSS Hub</title>
     <!-- Fonts are self-hosted via @fontsource packages imported in main.tsx.
-         The Google Fonts CDN preconnect and stylesheet links have been removed.
          No external font requests are made at runtime. -->
+
+    <!--
+      Critical CSS — loaded synchronously before any JavaScript.
+
+      Root cause of Bug 3 (loading bar/text invisible):
+        @fontsource fonts are imported in main.tsx, so Vite injects global.css
+        via JavaScript rather than a render-blocking <link> tag. Between page
+        load and CSS injection, CSS variables are undefined — all var() colours
+        resolve to transparent. The loading bar and text become invisible.
+        The loadShimmer animation is also in global.css so the bar is frozen.
+
+      Fix: duplicate the :root variable block and @keyframes here.
+        Values must stay in sync with global.css when design tokens change.
+        This block is intentionally minimal — only tokens used before
+        global.css loads (LoadingScreen, LoginScreen, NDAModal).
+    -->
+    <style>
+      /* ─── Structure ─── */
+      html, body { margin: 0; min-height: 100%; }
+      #root { min-height: 100vh; }
+
+      /* ─── Dark theme tokens (default) ─── */
+      :root {
+        --bg-base:        #0d1117;
+        --bg-elevated:    #161b22;
+        --bg-overlay:     #1c2128;
+        --bg-input:       #21262d;
+        --bg-hover:       #262c33;
+
+        --border:         #30363d;
+        --border-subtle:  #21262d;
+        --border-focus:   #58a6ff;
+
+        --text-primary:   #e6edf3;
+        --text-secondary: #8b949e;
+        --text-muted:     #407755;
+        --text-inverse:   #0d1117;
+
+        --accent:         #3fb950;
+        --accent-dim:     rgba(63,185,80,0.15);
+
+        --red:            #f85149;
+        --shadow-lg:      0 8px 32px rgba(0,0,0,0.6);
+        --radius:         10px;
+        --radius-sm:      7px;
+        --transition:     0.2s ease;
+      }
+
+      /* ─── Light theme overrides ─── */
+      body.light-mode {
+        --bg-base:        #f6f8fa;
+        --bg-elevated:    #ffffff;
+        --bg-overlay:     #f0f2f5;
+        --bg-input:       #f6f8fa;
+        --bg-hover:       #eaeef2;
+
+        --border:         #d0d7de;
+        --border-subtle:  #e8ecf0;
+        --border-focus:   #0969da;
+
+        --text-primary:   #1f2328;
+        --text-secondary: #57606a;
+        --text-muted:     #9198a1;
+        --text-inverse:   #ffffff;
+
+        --accent:         #1a7f37;
+        --accent-dim:     rgba(26,127,55,0.1);
+
+        --red:            #cf222e;
+        --shadow-lg:      0 8px 32px rgba(0,0,0,0.16);
+      }
+
+      /* ─── Background ─── */
+      html, body { background: var(--bg-base); }
+
+      /* ─── Loading bar animation ─── */
+      /* Duplicate of @keyframes loadShimmer in global.css.             */
+      /* Without this, the loading bar is frozen until global.css loads. */
+      @keyframes loadShimmer {
+        0%   { left: -45%; }
+        100% { left: 110%; }
+      }
+    </style>
   </head>
+
   <body>
+    <!--
+      Apply saved theme before React mounts to prevent FOUC.
+      Reads from Zustand persist key 'hub_theme':
+        {"state":{"theme":"dark","sidebarCollapsed":false},"version":0}
+      Mirrors applyTheme(): dark = no class (default), light = body.light-mode.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('hub_theme');
+          var theme  = stored ? (JSON.parse(stored).state || {}).theme : 'dark';
+          if (theme === 'light') document.body.classList.add('light-mode');
+          // Dark: no class needed — :root above is the dark default.
+        } catch (_) { /* leave dark default */ }
+      })();
+    </script>
+
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

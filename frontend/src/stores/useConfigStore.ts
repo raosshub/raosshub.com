@@ -6,7 +6,7 @@ export interface ProjectIdentity {
   productCode:    string;
   companyName:    string;
   status:         string;
-  siteTitle:      string;   // Browser tab title — independent of projectName
+  siteTitle:      string;
   description:    string;
   logoUrl:        string;
   faviconUrl:     string;
@@ -21,7 +21,6 @@ export interface ProjectIdentity {
   patentNotice:   string;
   trademarkNotice:string;
   copyrightNotice:string;
-  // Tab 3 fields — edited in DashboardSettingsTab, preserved here for read access
   chip:           string;
   name:           string;
   version:        string;
@@ -33,13 +32,13 @@ export interface ProjectIdentity {
   updatedLabel:   string;
 }
 
+// NDA body text stored per-language in config.
+// Version enforcement (forceOnVersionChange) removed — NDA is per-session only.
 export interface NdaConfig {
-  text?:                string;
-  forceOnVersionChange?: boolean;
+  text?:    string;   // legacy single-language field (backward compat)
+  [key: string]: unknown; // text_en, text_zh, text_ar ... dynamic keys
 }
 
-// Controls version line (Line 1) in sidebar footer and version history
-// section in OverviewPage. Set from Tab 6 Notification Settings.
 export interface NotificationsConfig {
   showVersion?: boolean;
 }
@@ -86,11 +85,9 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
       set({ identity: merged, nda, notifications, loaded: true });
 
-      // siteTitle takes priority; fall back to projectName
       const title = merged.siteTitle || merged.projectName;
       if (title) document.title = title;
 
-      // Apply favicon
       if (merged.faviconUrl) {
         let link = document.querySelector("link[rel*='icon']") as HTMLLinkElement;
         if (!link) {

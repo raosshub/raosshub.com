@@ -35,7 +35,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository resetTokenRepository;
     private final NdaAgreementRepository ndaAgreementRepository;
-    private final ConfigService configService;
+    // ConfigService removed — was only used for forceOnVersionChange (now deleted)
     private final PasswordEncoder passwordEncoder;
     private final AuditLogService auditLogService;
 
@@ -65,16 +65,9 @@ public class AuthService {
             user.setLastLogin(Instant.now());
             userRepository.save(user);
 
-            // Clear NDA acceptance — forces re-acceptance on every login unless
-            // forceOnVersionChange is ON, in which case GET /auth/nda/status checks
-            // whether the accepted version matches the current project version.
-            Object ndaCfg = configService.getConfig().get("nda");
-            boolean forceOnVersion = (ndaCfg instanceof java.util.Map<?,?> m)
-                && Boolean.TRUE.equals(m.get("forceOnVersionChange"));
-            if (!forceOnVersion) {
-                ndaAgreementRepository.findByUserId(user.getId())
-                    .ifPresent(ndaAgreementRepository::delete);
-            }
+            // NDA is per-session — always clear acceptance on every login.
+            // Version-based enforcement removed.
+            ndaAgreementRepository.findByUserId(user.getId()).ifPresent(ndaAgreementRepository::delete);
 
             String accessToken  = tokenProvider.generateAccessToken(authentication);
             String refreshToken = tokenProvider.generateRefreshToken(authentication);

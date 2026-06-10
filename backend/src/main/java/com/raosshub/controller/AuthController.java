@@ -1,5 +1,6 @@
 package com.raosshub.controller;
 
+import com.raosshub.config.AppProperties;
 import com.raosshub.dto.*;
 import com.raosshub.entity.NdaAgreement;
 import com.raosshub.entity.User;
@@ -8,11 +9,12 @@ import com.raosshub.security.JwtTokenProvider;
 import com.raosshub.security.UserDetailsImpl;
 import com.raosshub.service.AuthService;
 import com.raosshub.service.AuditLogService;
-import com.raosshub.service.ConfigService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -22,6 +24,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.util.Map;
 
 @Slf4j
@@ -33,38 +36,71 @@ public class AuthController {
     private final AuthService            authService;
     private final AuditLogService        auditLogService;
     private final NdaAgreementRepository ndaAgreementRepository;
-    private final ConfigService          configService;
+    // ConfigService removed — was only used for forceOnVersionChange logic
     private final JwtTokenProvider       tokenProvider;
     private final UserDetailsService     userDetailsService;
+    private final AppProperties          appProperties;
 
-    // ── Login ─────────────────────────────────────────────────────────────────
+    // ── Login ──────────────────────────────────────────────────────────────────
+    // Sets hub_refresh as httpOnly cookie so Axios can silently refresh the
+    // 15-minute access token. Returns only { accessToken, user }.
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<AuthService.AuthTokens>> login(
+    public ResponseEntity<ApiResponse<Map<String, Object>>> login(
             @Valid @RequestBody LoginRequest request,
             HttpServletRequest httpRequest) {
-        AuthService.AuthTokens response = authService.login(request, getClientIp(httpRequest));
-        return ResponseEntity.ok(ApiResponse.ok(response));
+
+        AuthService.AuthTokens tokens = authService.login(request, getClientIp(httpRequest));
+
+        ResponseCookie refreshCookie = ResponseCookie
+            .from("hub_refresh", tokens.refreshToken())
+            .httpOnly(true)
+            .secure(appProperties.getJwt().isCookieSecure())
+            .sameSite("Strict")
+            .path("/api/auth")
+            .maxAge(Duration.ofMillis(appProperties.getJwt().getRefreshExpirationMs()))
+            .build();
+
+        return ResponseEntity.ok()
+            .header(HttpHeaders.SET_COOKIE, refreshCookie.toString())
+            .body(ApiResponse.ok(Map.of(
+                "accessToken", tokens.accessToken(),
+                "user",        tokens.user()
+            )));
     }
 
-    // ── Current user ─────────────────────────────────────────────────────────
+    // ── Logout ────────────────────────────────────────────────────────────────
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout() {
+        ResponseCookie clearCookie = ResponseCookie
+            .from("hub_refresh", "")
+            .httpOnly(true)
+            .secure(appProperties.getJwt().isCookieSecure())
+            .sameSite("Strict")
+            .path("/api/auth")
+            .maxAge(0)
+            .build();
+
+        return ResponseEntity.ok()
+            .header(HttpHeaders.SET_COOKIE, clearCookie.toString())
+            .body(ApiResponse.ok(null));
+    }
+
+    // ── Current user ──────────────────────────────────────────────────────────
     @GetMapping("/me")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<UserDto>> getCurrentUser(
             @AuthenticationPrincipal UserDetailsImpl userDetails) {
-        return ResponseEntity.ok(ApiResponse.ok(authService.getCurrentUser(userDetails.getUsername())));
+        return ResponseEntity.ok(ApiResponse.ok(
+            authService.getCurrentUser(userDetails.getUsername())
+        ));
     }
 
     // ── Refresh token ─────────────────────────────────────────────────────────
-    // Accepts the refresh token from the httpOnly cookie (hub_refresh).
-    // Falls back to the Authorization header for clients that pass it there.
-    // Validates the token and issues a new access token.
-    // Returns only { accessToken } — the frontend only reads this field.
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<Map<String, String>>> refreshToken(
             @CookieValue(name = "hub_refresh", required = false) String refreshCookie,
             @RequestHeader(name = "Authorization", required = false) String authHeader) {
 
-        // Determine which token to validate
         String token = refreshCookie;
         if (token == null && authHeader != null && authHeader.startsWith("Bearer ")) {
             token = authHeader.substring(7);
@@ -77,25 +113,27 @@ public class AuthController {
             if (!tokenProvider.validateToken(token) || !tokenProvider.isRefreshToken(token)) {
                 return ResponseEntity.status(401).body(ApiResponse.error("Invalid or expired refresh token"));
             }
-            String username = tokenProvider.getUsernameFromToken(token);
+            String      username    = tokenProvider.getUsernameFromToken(token);
             UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-            Authentication auth = new UsernamePasswordAuthenticationToken(
+            Authentication auth     = new UsernamePasswordAuthenticationToken(
                 userDetails, null, userDetails.getAuthorities()
             );
             String newAccessToken = tokenProvider.generateAccessToken(auth);
             return ResponseEntity.ok(ApiResponse.ok(Map.of("accessToken", newAccessToken)));
+
         } catch (Exception e) {
             log.warn("[Auth] Refresh failed: {}", e.getMessage());
             return ResponseEntity.status(401).body(ApiResponse.error("Refresh token invalid"));
         }
     }
 
-    // ── Password reset ────────────────────────────────────────────────────────
+    // ── Forgot / reset password ───────────────────────────────────────────────
     @PostMapping("/forgot-password")
     public ResponseEntity<ApiResponse<Void>> forgotPassword(
             @Valid @RequestBody ForgotPasswordRequest request) {
         authService.forgotPassword(request);
-        return ResponseEntity.ok(ApiResponse.ok(null, "If the account exists, a reset link has been sent"));
+        return ResponseEntity.ok(ApiResponse.ok(null,
+            "If the account exists, a reset link has been sent"));
     }
 
     @PostMapping("/reset-password")
@@ -105,8 +143,9 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok(null, "Password updated successfully"));
     }
 
-    // ── NDA: accept ──────────────────────────────────────────────────────────
-    // Upserts the nda_agreements row — updates accepted_version on each acceptance.
+    // ── NDA: accept ───────────────────────────────────────────────────────────
+    // Upserts the nda_agreements row.
+    // acceptedVersion is no longer set — version enforcement is removed.
     @PostMapping("/nda")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Void>> acceptNda(
@@ -122,66 +161,36 @@ public class AuthController {
                 return n;
             });
 
-        nda.setAcceptedVersion(currentProjectVersion());
         nda.setIpAddress(getClientIp(httpRequest));
         nda.setUserAgent(httpRequest.getHeader("User-Agent"));
         ndaAgreementRepository.save(nda);
 
-        auditLogService.log(userDetails.getUsername(), "accept", "auth", userDetails.getId(),
-            "NDA accepted (v" + (currentProjectVersion() != null ? currentProjectVersion() : "?") + ")",
-            getClientIp(httpRequest));
+        auditLogService.log(
+            userDetails.getUsername(), "accept", "auth", userDetails.getId(),
+            "NDA accepted", getClientIp(httpRequest)
+        );
 
         return ResponseEntity.ok(ApiResponse.ok(null));
     }
 
     // ── NDA: status ───────────────────────────────────────────────────────────
-    // When config.nda.forceOnVersionChange = true: returns false if the project
-    // version changed since the user last accepted — causes the NDA modal to
-    // re-appear without forcing a logout.
+    // NDA is per-session — login service deletes the record on every login.
+    // Status is simply: does a record exist for this user?
+    //   false = no record (login deleted it)   → NDA modal shows
+    //   true  = record exists (same session)   → NDA modal hidden
+    //
+    // Version-based enforcement removed. forceOnVersionChange toggle in
+    // Admin Setup Tab 6 no longer has any effect on the backend.
     @GetMapping("/nda/status")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Boolean>> getNdaStatus(
             @AuthenticationPrincipal UserDetailsImpl userDetails) {
 
-        boolean exists = ndaAgreementRepository.existsByUserId(userDetails.getId());
-        if (!exists) return ResponseEntity.ok(ApiResponse.ok(false));
-
-        if (isVersionEnforcementOn()) {
-            String currentVersion = currentProjectVersion();
-            NdaAgreement nda = ndaAgreementRepository.findByUserId(userDetails.getId()).orElse(null);
-            if (nda == null) return ResponseEntity.ok(ApiResponse.ok(false));
-            if (currentVersion != null && !currentVersion.isEmpty()) {
-                return ResponseEntity.ok(ApiResponse.ok(currentVersion.equals(nda.getAcceptedVersion())));
-            }
-        }
-
-        return ResponseEntity.ok(ApiResponse.ok(true));
+        boolean accepted = ndaAgreementRepository.existsByUserId(userDetails.getId());
+        return ResponseEntity.ok(ApiResponse.ok(accepted));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    @SuppressWarnings("unchecked")
-    private boolean isVersionEnforcementOn() {
-        try {
-            Object ndaCfg = configService.getConfig().get("nda");
-            if (ndaCfg instanceof Map<?, ?> m) {
-                return Boolean.TRUE.equals(((Map<String, Object>) m).get("forceOnVersionChange"));
-            }
-        } catch (Exception ignored) {}
-        return false;
-    }
-
-    @SuppressWarnings("unchecked")
-    private String currentProjectVersion() {
-        try {
-            Object id = configService.getConfig().get("identity");
-            if (id instanceof Map<?, ?> m) {
-                Object v = ((Map<String, Object>) m).get("version");
-                return v != null ? v.toString() : null;
-            }
-        } catch (Exception ignored) {}
-        return null;
-    }
 
     private String getClientIp(HttpServletRequest request) {
         String xf = request.getHeader("X-Forwarded-For");

@@ -37,7 +37,7 @@ export const useAuthStore = create<AuthState>()(
           setApiToken(accessToken);
           set({ user, token: accessToken, isAuthenticated: true, isLoading: false });
           return true;
-        } catch (e) {
+        } catch {
           set({ isLoading: false });
           return false;
         }
@@ -61,28 +61,56 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      // ── NDA accept ──────────────────────────────────────────────────────────
+      // ROOT CAUSE FIX: the previous implementation awaited the API call before
+      // setting ndaAccepted:true. If the JWT was expired at the moment of clicking
+      // "I Agree", the POST /auth/nda returned 401, the catch ran, ndaAccepted
+      // stayed false, and the NDA modal was stuck permanently.
+      //
+      // v2 reference: APP._ndaAgreedThisSession = true is set BEFORE the API call.
+      // The server call is best-effort audit trail only — it must never block
+      // the user from proceeding.
+      //
+      // Fix: set ndaAccepted:true immediately (optimistic update), then attempt
+      // the server call. A network or auth failure is logged but does NOT revert
+      // the acceptance — the session acceptance stands.
       acceptNda: async () => {
+        // Accept immediately — NDA modal dismisses at once regardless of network
+        set({ ndaAccepted: true });
         try {
           await authApi.acceptNda();
-          set({ ndaAccepted: true });
         } catch (e) {
-          console.error('NDA accept failed:', e);
+          // Server record failed (JWT expired, network error, etc.)
+          // The client-side acceptance stands for this session.
+          // On next login the NDA will re-appear (login service clears the record),
+          // at which point a fresh token will persist it correctly.
+          console.warn('[NDA] Server record failed — accepted client-side only:', e);
         }
       },
 
+      // ── NDA status check ────────────────────────────────────────────────────
+      // Called during init and after login. Sets ndaAccepted from the server.
+      // Catch swallows errors silently — App.tsx auth guard handles auth failures.
       checkNda: async () => {
         try {
           const res = await authApi.ndaStatus();
           set({ ndaAccepted: res.data.data });
         } catch {
+          // Auth failure (401): App.tsx guard checks isAuthenticated after this
+          // and will route to login rather than showing NDA.
+          // Network failure: leave ndaAccepted as false — NDA will show, which is
+          // the safe fallback.
           set({ ndaAccepted: false });
         }
       },
 
-      setNdaAccepted: (v) => set({ ndaAccepted: v }),
+      setNdaAccepted: (v: boolean) => set({ ndaAccepted: v }),
     }),
     {
-      name:       'hub_auth',
+      name: 'hub_auth',
+      // ndaAccepted intentionally NOT persisted — must be re-validated from
+      // server on every page load. Login service clears the DB record on
+      // every login so the NDA appears fresh each session.
       partialize: (state) => ({
         user:            state.user,
         token:           state.token,

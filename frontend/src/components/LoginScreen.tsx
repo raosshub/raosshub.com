@@ -4,10 +4,20 @@ import { useI18nStore }  from '@/stores/useI18nStore';
 import { useThemeStore } from '@/stores/useThemeStore';
 import { Icons }         from '@/components/icons';
 
-const LoginScreen: React.FC = () => {
-  const { login }                              = useAuthStore();
+interface LoginScreenProps {
+  // When true: renders only the dark background + mesh grid.
+  // No card, no form, no inputs. Used in the 'nda' init stage so the login
+  // screen acts as a visual backdrop for NDAModal without any input fields
+  // in the DOM. Chrome's autofill system detects <input> elements and shows
+  // its native suggestion overlay at OS z-level regardless of z-index, inert,
+  // or pointer-events — the only reliable fix is to not have inputs in the DOM.
+  backdropOnly?: boolean;
+}
+
+const LoginScreen: React.FC<LoginScreenProps> = ({ backdropOnly = false }) => {
+  const { login }                                  = useAuthStore();
   const { t, currentLang, setLanguage, languages } = useI18nStore();
-  const { theme, toggleTheme }                 = useThemeStore();
+  const { theme, toggleTheme }                     = useThemeStore();
 
   const [username,     setUsername]     = useState('');
   const [password,     setPassword]     = useState('');
@@ -20,7 +30,6 @@ const LoginScreen: React.FC = () => {
     e.preventDefault();
     setError('');
     if (!username.trim() || !password) {
-      // Fallback passed as second arg — works even if key is not seeded in DB
       setError(t('login_err_empty', 'Please enter your username and password'));
       return;
     }
@@ -32,6 +41,26 @@ const LoginScreen: React.FC = () => {
 
   const EyeIcon = showPassword ? Icons.eye : Icons.eyeOff;
 
+  // ── Backdrop-only mode ────────────────────────────────────────────────────
+  // Render only the background shell — identical outer wrapper + mesh grid
+  // as the full login screen so the visual is consistent. No card, no form.
+  if (backdropOnly) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: 'var(--bg-base)', zIndex: 1000 }}>
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          backgroundImage: `linear-gradient(var(--border-subtle) 1px, transparent 1px),
+                            linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px)`,
+          backgroundSize: '40px 40px',
+          opacity: 0.4,
+          maskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black 30%, transparent 100%)',
+          WebkitMaskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black 30%, transparent 100%)',
+        }} />
+      </div>
+    );
+  }
+
+  // ── Full login screen ─────────────────────────────────────────────────────
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'var(--bg-base)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
 
@@ -46,7 +75,6 @@ const LoginScreen: React.FC = () => {
             R
           </div>
           <div>
-            {/* Second arg to t() is the fallback — fires when key is not found in DB */}
             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>
               {t('login_title', 'Sign In')}
             </div>
@@ -170,6 +198,7 @@ const LoginScreen: React.FC = () => {
         <div style={{ marginTop: 20, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
           {`© ${new Date().getFullYear()} RAOSS HK COMPANY LIMITED`}
         </div>
+
       </div>
     </div>
   );

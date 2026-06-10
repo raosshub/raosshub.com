@@ -36,9 +36,9 @@ function renderMarkdown(md: string): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 const NDAModal: React.FC = () => {
-  const { t, currentLang }  = useI18nStore();
+  const { t, currentLang }    = useI18nStore();
   const { acceptNda, logout } = useAuthStore();
-  const { nda }          = useConfigStore();
+  const { nda }               = useConfigStore();
   const [checked, setChecked] = useState(false);
 
   const handleAgree = useCallback(async () => {
@@ -55,7 +55,9 @@ const NDAModal: React.FC = () => {
   const hasAdminNda = ndaText.length > 0;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+    // zIndex 1100 — must be above LoginScreen (zIndex 1000) since NDA renders
+    // as an overlay on the login page in the 'nda' init stage.
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: 'var(--shadow-lg)', width: '100%', maxWidth: 680, maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'modalIn 0.25s ease' }}>
 
         {/* Header */}
@@ -79,7 +81,7 @@ const NDAModal: React.FC = () => {
             // Admin-authored Markdown rendered as HTML
             <div dangerouslySetInnerHTML={{ __html: renderMarkdown(ndaText) }} />
           ) : (
-            // Default static content — shown until admin configures NDA text in Admin Setup → Integrations
+            // Default static content — shown until admin configures NDA text in Admin Setup
             <ol style={{ paddingLeft: 20 }}>
               <li style={{ marginBottom: 12 }}>
                 <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{t('nda_item1_title', 'Confidentiality:')}</strong>{' '}
@@ -125,6 +127,7 @@ const NDAModal: React.FC = () => {
             </button>
           </div>
         </div>
+
       </div>
     </div>
   );
