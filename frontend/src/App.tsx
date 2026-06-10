@@ -19,6 +19,18 @@ import ActivityLogPage    from '@/pages/ActivityLogPage';
 import ProjectConfigPage  from '@/pages/ProjectConfigPage';
 import AdminSetupPage     from '@/pages/admin/AdminSetupPage';
 
+// ─── NDA helper ───────────────────────────────────────────────────────────────
+// Returns true only when admin has saved actual NDA text in Admin Setup → Tab 6.
+// Used in two places: init (page load) and login→nda transition.
+// Checks text_en (canonical key) and the legacy text field.
+// When false, the nda init stage is skipped — login goes straight to app.
+function ndaHasText(nda: Record<string, unknown>): boolean {
+  return !!(
+    (nda['text_en'] as string || '').trim() ||
+    (nda['text']    as string || '').trim()
+  );
+}
+
 // ─── Init stage machine ───────────────────────────────────────────────────────
 //
 //   loading → login   no stored token, or token + refresh both invalid
@@ -87,7 +99,8 @@ function App() {
       // nda stage is always entered for authenticated sessions — matching v2.
       setTimeout(() => {
         if (useAuthStore.getState().isAuthenticated) {
-          setInitStage('nda');
+          const ndaCfg = useConfigStore.getState().nda as Record<string, unknown>;
+          setInitStage(ndaHasText(ndaCfg) ? 'nda' : 'app');
         } else {
           setInitStage('login');
         }
@@ -103,11 +116,9 @@ function App() {
       (async () => {
         await loadLocale();
         await loadConfig(); // config (NDA text) ready before NDA modal shows
-        // Auth guard: loadLocale/loadConfig make API calls; if the token
-        // expired between login() and here, auth:logout fired and logout()
-        // set isAuthenticated=false. Don't advance to nda in that case.
         if (!useAuthStore.getState().isAuthenticated) return;
-        setInitStage('nda');
+        const ndaCfg = useConfigStore.getState().nda as Record<string, unknown>;
+        setInitStage(ndaHasText(ndaCfg) ? 'nda' : 'app');
       })();
     }
     if (!isAuthenticated && (initStage === 'app' || initStage === 'nda')) {

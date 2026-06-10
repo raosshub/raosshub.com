@@ -1,9 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { useAuthStore }  from '@/stores/useAuthStore';
-import { useI18nStore }  from '@/stores/useI18nStore';
-import { useThemeStore } from '@/stores/useThemeStore';
-import { Icons }         from '@/components/icons';
-import { authApi }       from '@/utils/api';
+import { useAuthStore }   from '@/stores/useAuthStore';
+import { useI18nStore }   from '@/stores/useI18nStore';
+import { useThemeStore }  from '@/stores/useThemeStore';
+import { useConfigStore } from '@/stores/useConfigStore';
+import { Icons }          from '@/components/icons';
+import { authApi }        from '@/utils/api';
 
 interface LoginScreenProps {
   // When true: renders only the dark background + mesh grid — no card, no form.
@@ -21,6 +22,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ backdropOnly = false }) => {
   const { login }                                  = useAuthStore();
   const { t, currentLang, setLanguage, languages } = useI18nStore();
   const { theme, toggleTheme }                     = useThemeStore();
+  const { identity }                               = useConfigStore();
+
+  // Project initial for the logo icon — derived from config, never hardcoded
+  const projectInitial = identity?.projectName?.[0]?.toUpperCase() || '';
 
   // ── Detect reset token in URL on first render ─────────────────────────────
   const [view, setView] = useState<LoginView>(() => {
@@ -57,10 +62,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ backdropOnly = false }) => {
   const EyeIcon    = showPassword ? Icons.eye : Icons.eyeOff;
   const EyeIconNew = showNewPwd   ? Icons.eye : Icons.eyeOff;
 
-  // Clear reset token from URL history so the browser back button and URL bar
-  // don't expose it. Must run once on mount.
+  // Read URL params on mount — apply language, then clear from URL bar
   useEffect(() => {
-    if (window.location.search.includes('reset=')) {
+    const p = new URLSearchParams(window.location.search);
+    // Apply language embedded in reset link (e.g. ?reset=TOKEN&lang=zh)
+    // so the panel opens in the correct language on a fresh page load
+    const urlLang = p.get('lang');
+    if (urlLang) setLanguage(urlLang);
+    // Clear token + lang from URL bar after reading — don't leave token visible
+    if (window.location.search) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -182,10 +192,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ backdropOnly = false }) => {
         {view === 'login' && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 8,
-                background: 'var(--accent-dim)', color: 'var(--accent)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 800, fontSize: 18, border: '1px solid rgba(63,185,80,0.3)' }}>R</div>
+              {identity?.logoUrl
+                ? <img src={identity.logoUrl} alt={projectInitial}
+                    style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'contain' }} />
+                : <div style={{ width: 40, height: 40, borderRadius: 8,
+                    background: 'var(--accent-dim)', color: 'var(--accent)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 800, fontSize: 18, border: '1px solid rgba(63,185,80,0.3)' }}>
+                    {projectInitial}
+                  </div>
+              }
               <div>
                 <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>
                   {t('login_title', 'Sign In')}
@@ -198,10 +214,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ backdropOnly = false }) => {
 
             <form onSubmit={handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={labelSt}>{t('login_username', 'Username')}</label>
-                <input type="text" value={username} onChange={e => setUsername(e.target.value)}
-                  autoComplete="username" autoFocus
-                  placeholder={t('login_username_placeholder', 'Enter your username')}
+                <label style={labelSt}>{t('login_username', 'Email')}</label>
+                <input type="email" value={username} onChange={e => setUsername(e.target.value)}
+                  autoComplete="email" autoFocus
+                  placeholder={t('login_username_placeholder', 'Enter your email address')}
                   style={inputSt} onFocus={onFocus} onBlur={onBlur} />
               </div>
 
@@ -273,23 +289,35 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ backdropOnly = false }) => {
         {/* ── VIEW: FORGOT PASSWORD ────────────────────────────────────── */}
         {view === 'forgot' && (
           <>
-            <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 6 }}>
-                {t('forgot_title', 'Reset Password')}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                {t('forgot_subtitle', 'Enter your username to receive a reset link.')}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
+              {identity?.logoUrl
+                ? <img src={identity.logoUrl} alt={projectInitial}
+                    style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'contain' }} />
+                : <div style={{ width: 40, height: 40, borderRadius: 8,
+                    background: 'var(--accent-dim)', color: 'var(--accent)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 800, fontSize: 18, border: '1px solid rgba(63,185,80,0.3)' }}>
+                    {projectInitial}
+                  </div>
+              }
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>
+                  {t('forgot_title', 'Reset Password')}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {t('forgot_subtitle', 'Enter your email address to receive a reset link.')}
+                </div>
               </div>
             </div>
 
             {!forgotDone ? (
               <form onSubmit={handleForgotSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
-                  <label style={labelSt}>{t('login_username', 'Username')}</label>
-                  <input type="text" value={forgotUsername}
+                  <label style={labelSt}>{t('forgot_label_email', 'Email')}</label>
+                  <input type="email" value={forgotUsername}
                     onChange={e => setForgotUsername(e.target.value)}
-                    autoComplete="username" autoFocus
-                    placeholder={t('login_username_placeholder', 'Enter your username')}
+                    autoComplete="email" autoFocus
+                    placeholder={t('forgot_placeholder', 'Enter your email address')}
                     style={inputSt} onFocus={onFocus} onBlur={onBlur} />
                 </div>
 
@@ -333,12 +361,24 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ backdropOnly = false }) => {
         {/* ── VIEW: RESET PASSWORD ─────────────────────────────────────── */}
         {view === 'reset' && (
           <>
-            <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 6 }}>
-                {t('reset_title', 'Set New Password')}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                {t('reset_subtitle', 'Enter and confirm your new password.')}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
+              {identity?.logoUrl
+                ? <img src={identity.logoUrl} alt={projectInitial}
+                    style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'contain' }} />
+                : <div style={{ width: 40, height: 40, borderRadius: 8,
+                    background: 'var(--accent-dim)', color: 'var(--accent)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 800, fontSize: 18, border: '1px solid rgba(63,185,80,0.3)' }}>
+                    {projectInitial}
+                  </div>
+              }
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>
+                  {t('reset_title', 'Set New Password')}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {t('reset_subtitle', 'Enter and confirm your new password.')}
+                </div>
               </div>
             </div>
 
@@ -441,7 +481,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ backdropOnly = false }) => {
         </div>
 
         <div style={{ marginTop: 20, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
-          {`© ${new Date().getFullYear()} RAOSS HK COMPANY LIMITED`}
+          {`© ${new Date().getFullYear()} ${identity?.companyName || ''}`}
         </div>
 
       </div>

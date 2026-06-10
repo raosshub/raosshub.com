@@ -1,6 +1,7 @@
 package com.raosshub.service;
 
 import com.raosshub.entity.User;
+import com.raosshub.service.I18nService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
@@ -33,6 +34,7 @@ import java.util.Properties;
 public class EmailService {
 
     private final ConfigService configService;
+    private final I18nService   i18nService;
 
     // ── Password reset email ──────────────────────────────────────────────────
 
@@ -48,7 +50,7 @@ public class EmailService {
     public void sendPasswordResetEmail(User user, String resetToken,
                                        String frontendUrl, String lang) {
 
-        String resetUrl = frontendUrl + "/?reset=" + resetToken;
+        String resetUrl = frontendUrl + "/?reset=" + resetToken + "&lang=" + lang;
 
         // Always log the reset URL — essential for local dev (Option A fallback)
         // and useful for production debugging. The token is one-time use and
@@ -73,14 +75,12 @@ public class EmailService {
         String displayName = (user.getFirstName() != null && !user.getFirstName().isBlank())
             ? user.getFirstName() : user.getUsername();
 
-        boolean isZh = "zh".equalsIgnoreCase(lang);
-
-        String subject = isZh
-            ? "密码重置 — " + projectName
-            : "Password Reset — " + projectName;
-
-        String html = buildHtml(displayName, resetUrl, projectName,
-                                companyName, isZh, Year.now().getValue());
+        // Subject and body come from ui_messages DB — lang → EN fallback → hardcoded fallback.
+        // No hardcoded EN or ZH strings: when Kimi translates email_* keys for a language,
+        // emails are automatically sent in that language with zero code changes.
+        String subject = et("email_reset_subject", lang, "Password Reset") + " — " + projectName;
+        String html    = buildHtml(displayName, resetUrl, projectName, companyName,
+                                   lang, Year.now().getValue());
 
         try {
             MimeMessage msg = sender.createMimeMessage();
@@ -192,95 +192,122 @@ public class EmailService {
         try { return Integer.parseInt(v.toString()); } catch (Exception e) { return 587; }
     }
 
+    /**
+     * Read email string from DB: tries the requested language, falls back to EN,
+     * then to the hardcoded fallback param. This means every email key added to
+     * ui_messages for any language automatically works in outbound email — no
+     * code changes required when admins add new languages via Kimi.
+     */
+    private String et(String key, String lang, String fallback) {
+        String val = i18nService.getUiString(key, lang)
+            .map(m -> m.getValue())
+            .filter(v -> v != null && !v.isBlank())
+            .orElse(null);
+        if (val != null) return val;
+        if (!"en".equalsIgnoreCase(lang)) {
+            val = i18nService.getUiString(key, "en")
+                .map(m -> m.getValue())
+                .filter(v -> v != null && !v.isBlank())
+                .orElse(null);
+            if (val != null) return val;
+        }
+        return fallback;
+    }
+
     // ── HTML email template ───────────────────────────────────────────────────
     // Dark theme (#0d1117 base, #3fb950 accent) with inline styles.
     // Table-based layout for maximum email-client compatibility.
+    // All content strings read from ui_messages DB — no hardcoded EN or ZH.
 
-    private static String buildHtml(String displayName, String resetUrl,
-                                    String projectName, String companyName,
-                                    boolean isZh, int year) {
+    private String buildHtml(String displayName, String resetUrl,
+                              String projectName, String companyName,
+                              String lang, int year) {
 
-        String title   = isZh ? "重置您的密码"                  : "Reset Your Password";
-        String greeting= isZh ? "您好 " + displayName + "，"   : "Hi " + displayName + ",";
-        String body    = isZh
-            ? "我们收到了重置您账号密码的请求。点击下方按钮设置新密码。"
-            : "We received a request to reset your password. Click the button below to set a new password.";
-        String btnText = isZh ? "重置密码 →"                   : "Reset Password →";
-        String expiry  = isZh
-            ? "此链接将在 <strong style=\"color:#e6edf3\">1小时</strong> 后失效。"
-            + "如果您没有申请重置密码，请忽略此邮件，您的账号不会受到影响。"
-            : "This link expires in <strong style=\"color:#e6edf3\">1 hour</strong>."
-            + " If you did not request a password reset, you can safely ignore this email — your account remains unchanged.";
-        String footer  = "&copy; " + year + " " + esc(companyName);
+        String title    = et("email_reset_title",    lang, "Reset Your Password");
+        // {name} in greeting is substituted with the escaped display name
+        String greeting = et("email_reset_greeting", lang, "Hi {name},")
+                            .replace("{name}", esc(displayName));
+        String body     = et("email_reset_body",     lang,
+                             "We received a request to reset your password. " +
+                             "Click the button below to set a new password.");
+        String btnText  = et("email_reset_btn",      lang, "Reset Password →");
+        String expiry   = et("email_reset_expiry",   lang,
+                             "This link expires in 1 hour. " +
+                             "If you did not request a password reset, " +
+                             "you can safely ignore this email.");
+        String footer   = "&copy; " + year + " " + esc(companyName);
+
+        // HTML-encode & in href — required for valid HTML attribute values.
+        // esc() is not used here because it also encodes < > which are not in URLs.
+        String hrefUrl = resetUrl.replace("&", "&amp;");
 
         return "<!DOCTYPE html>" +
-            "<html lang=\"" + (isZh ? "zh" : "en") + "\">" +
+            "<html lang=\"" + lang + "\">" +
             "<head>" +
             "<meta charset=\"UTF-8\">" +
-            "<meta name=\"color-scheme\" content=\"dark\">" +
-            "<meta name=\"supported-color-schemes\" content=\"dark\">" +
             "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
             "<title>" + esc(title) + "</title>" +
             "</head>" +
-            "<body style=\"margin:0;padding:0;background:#0d1117;" +
-            "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;\">" +
+            // bgcolor on body — belt-and-suspenders: some clients use attribute, some use CSS
+            "<body bgcolor=\"#0d1117\" style=\"margin:0;padding:0;background:#0d1117;" +
+            "font-family:Arial,Helvetica,sans-serif;\">" +
 
-            // Outer table
-            "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"" +
-            " style=\"background:#0d1117;min-height:100vh;\">" +
-            "<tr><td align=\"center\" style=\"padding:48px 20px 40px;\">" +
+            // Outer wrapper table — bgcolor ensures dark bg in ALL email clients
+            "<table bgcolor=\"#0d1117\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\">" +
+            "<tr><td bgcolor=\"#0d1117\" align=\"center\" style=\"padding:48px 20px 40px;\">" +
 
-            // Inner narrow table
-            "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"" +
-            " style=\"max-width:560px;\">" +
+            // Inner narrow table — max 560px
+            "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"max-width:560px;\">" +
 
-            // ── Logo / project name ──
+            // ── Logo row ──
             "<tr><td align=\"center\" style=\"padding-bottom:28px;\">" +
-            "<div style=\"font-size:22px;font-weight:700;color:#e6edf3;" +
-            "letter-spacing:-0.3px;\">" + esc(projectName) +
-            "<span style=\"color:#3fb950;\"> &bull;</span></div>" +
+            "<span style=\"font-size:22px;font-weight:700;color:#e6edf3;" +
+            "letter-spacing:-0.3px;font-family:Arial,Helvetica,sans-serif;\">" +
+            esc(projectName) + "<span style=\"color:#3fb950;\"> &bull;</span></span>" +
             "</td></tr>" +
 
-            // ── Card ──
-            "<tr><td style=\"background:#161b22;border:1px solid #30363d;" +
-            "border-radius:12px;padding:36px 40px;\">" +
+            // ── Card row — bgcolor#161b22 cannot be overridden by email client ──
+            "<tr><td bgcolor=\"#161b22\" style=\"background:#161b22;border:1px solid #30363d;" +
+            "border-radius:10px;padding:36px 40px;\">" +
 
             // Title
-            "<h1 style=\"margin:0 0 8px;font-size:20px;font-weight:700;" +
-            "color:#e6edf3;line-height:1.3;\">" + esc(title) + "</h1>" +
+            "<h1 style=\"margin:0 0 10px;font-size:20px;font-weight:700;" +
+            "color:#e6edf3;line-height:1.3;font-family:Arial,Helvetica,sans-serif;\">" +
+            esc(title) + "</h1>" +
 
-            // Greeting + body
-            "<p style=\"margin:0 0 24px;font-size:14px;line-height:1.75;" +
-            "color:#8b949e;\">" + esc(greeting) + "<br><br>" + esc(body) + "</p>" +
+            // Greeting + body text
+            "<p style=\"margin:0 0 24px;font-size:14px;line-height:1.8;" +
+            "color:#8b949e;font-family:Arial,Helvetica,sans-serif;\">" +
+            esc(greeting) + "<br><br>" + esc(body) + "</p>" +
 
-            // CTA button (table trick for reliable rendering)
-            "<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\"" +
-            " style=\"margin-bottom:28px;\">" +
-            "<tr><td style=\"background:#3fb950;border-radius:8px;" +
-            "mso-padding-alt:0;\">" +
-            "<a href=\"" + resetUrl + "\"" +
-            " style=\"display:inline-block;padding:13px 26px;" +
-            "font-size:14px;font-weight:600;color:#0d1117;" +
-            "text-decoration:none;letter-spacing:0.2px;\">" +
+            // CTA button — bgcolor on td forces green bg in Outlook/webmail
+            "<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"margin-bottom:28px;\">" +
+            "<tr><td bgcolor=\"#3fb950\" style=\"background:#3fb950;border-radius:8px;\">" +
+            "<a href=\"" + hrefUrl + "\"" +
+            " style=\"display:inline-block;padding:13px 28px;font-size:14px;" +
+            "font-weight:600;color:#0d1117;text-decoration:none;" +
+            "font-family:Arial,Helvetica,sans-serif;\">" +
             esc(btnText) + "</a></td></tr></table>" +
 
             // Expiry / security note
-            "<p style=\"margin:0 0 18px;font-size:12px;line-height:1.7;" +
-            "color:#8b949e;\">" + expiry + "</p>" +
+            "<p style=\"margin:0 0 18px;font-size:12px;line-height:1.75;" +
+            "color:#8b949e;font-family:Arial,Helvetica,sans-serif;\">" + expiry + "</p>" +
 
-            // Fallback plain-text URL
+            // Plain-text URL fallback — for clients that block links
             "<p style=\"margin:0;font-size:11px;color:#407755;" +
-            "word-break:break-all;\">" + esc(resetUrl) + "</p>" +
+            "word-break:break-all;font-family:Arial,Helvetica,sans-serif;\">" +
+            esc(resetUrl) + "</p>" +
 
-            "</td></tr>" +
+            "</td></tr>" + // end card
 
-            // Footer
+            // Footer row
             "<tr><td align=\"center\"" +
-            " style=\"padding-top:20px;font-size:11px;color:#407755;\">" +
+            " style=\"padding-top:20px;font-size:11px;color:#407755;" +
+            "font-family:Arial,Helvetica,sans-serif;\">" +
             footer + "</td></tr>" +
 
-            "</table>" + // inner
-            "</td></tr></table>" + // outer
+            "</table>" +          // inner narrow table
+            "</td></tr></table>" + // outer wrapper table
             "</body></html>";
     }
 

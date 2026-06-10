@@ -52,7 +52,10 @@ const NDAModal: React.FC = () => {
   const ndaText    = ((ndaRecord[`text_${currentLang}`] as string | undefined) || '').trim()
                   || ((ndaRecord['text_en']              as string | undefined) || '').trim()
                   || (nda?.text || '').trim();
-  const hasAdminNda = ndaText.length > 0;
+
+  // App.tsx skips the nda stage when no text is configured.
+  // This return is a safety net for any edge case where the modal mounts anyway.
+  if (!ndaText) return null;
 
   return (
     // zIndex 1100 — must be above LoginScreen (zIndex 1000) since NDA renders
@@ -71,40 +74,15 @@ const NDAModal: React.FC = () => {
             </p>
           </div>
           <span style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--red-dim)', color: 'var(--red)', fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', border: '1px solid var(--red-dim)' }}>
-            REQUIRED
+            {t('nda_required', 'REQUIRED')}
           </span>
         </div>
 
-        {/* Body — admin Markdown or default static content */}
+        {/* Body — admin-authored Markdown rendered as HTML.
+            Fallback static content removed: NDA only shows when admin has
+            configured text in Admin Setup → Tab 6. App.tsx enforces this. */}
         <div style={{ padding: '24px 28px', overflowY: 'auto', maxHeight: '45vh', fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)' }}>
-          {hasAdminNda ? (
-            // Admin-authored Markdown rendered as HTML
-            <div dangerouslySetInnerHTML={{ __html: renderMarkdown(ndaText) }} />
-          ) : (
-            // Default static content — shown until admin configures NDA text in Admin Setup
-            <ol style={{ paddingLeft: 20 }}>
-              <li style={{ marginBottom: 12 }}>
-                <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{t('nda_item1_title', 'Confidentiality:')}</strong>{' '}
-                {t('nda_item1_body', 'All project information, including technical specifications, design files, source code, and business strategies, is strictly confidential.')}
-              </li>
-              <li style={{ marginBottom: 12 }}>
-                <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{t('nda_item2_title', 'Non-Disclosure:')}</strong>{' '}
-                {t('nda_item2_body', 'You agree not to disclose, share, or transmit any project information to third parties without explicit written consent.')}
-              </li>
-              <li style={{ marginBottom: 12 }}>
-                <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{t('nda_item3_title', 'Authorized Use Only:')}</strong>{' '}
-                {t('nda_item3_body', 'Access is granted for authorized project purposes only. Any unauthorized use or reproduction is strictly prohibited.')}
-              </li>
-              <li style={{ marginBottom: 12 }}>
-                <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{t('nda_item4_title', 'Data Protection:')}</strong>{' '}
-                {t('nda_item4_body', 'All personal and project data must be handled in accordance with applicable data protection regulations.')}
-              </li>
-              <li style={{ marginBottom: 0 }}>
-                <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{t('nda_item5_title', 'Consequences:')}</strong>{' '}
-                {t('nda_item5_body', 'Violation of this agreement may result in immediate access revocation and legal action.')}
-              </li>
-            </ol>
-          )}
+          <div dangerouslySetInnerHTML={{ __html: renderMarkdown(ndaText) }} />
         </div>
 
         {/* Footer */}

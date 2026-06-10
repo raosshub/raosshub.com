@@ -137,6 +137,10 @@ const NotificationsTab = React.forwardRef<
 
   // ── Save ─────────────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
+    // Guard: form.ndaText is '' until loadFromDB completes.
+    // Without this, saving while loading would send {text_en:''} and
+    // overwrite legitimate NDA content already in the database.
+    if (loading) return;
     setSaving(true);
     try {
       // Build NDA payload — text_en is the master; other languages are Kimi-translated
@@ -204,10 +208,19 @@ const NotificationsTab = React.forwardRef<
         }
       }
 
-      await configApi.save({
+      // Only include nda in the payload when the text was actually changed.
+      // If admin only toggled showVersion, sending {nda: {text_en: existingText}}
+      // is harmless but sending {nda: {text_en: ''}} would erase all NDA content.
+      // This guard also protects against a race where save fires before loadFromDB
+      // has populated form.ndaText.
+      const savePayload: Record<string, unknown> = {
         notifications: { showVersion: form.showVersion },
-        nda:           ndaPayload,
-      });
+      };
+      if (form.ndaText !== original.ndaText) {
+        savePayload.nda = ndaPayload;
+      }
+
+      await configApi.save(savePayload);
 
       setOriginal(form);
       setHasChanges(false);
