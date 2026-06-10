@@ -16,30 +16,30 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ConfigService {
 
-    private final ProjectConfigRepository     configRepository;
-    private final AppProperties               appProperties;
+    private final ProjectConfigRepository      configRepository;
+    private final AppProperties                appProperties;
 
     // Repositories used by Danger Zone resets
-    private final LocaleContentRepository     localeContentRepository;
-    private final UiMessageRepository         uiMessageRepository;
-    private final TeamRepository              teamRepository;
-    private final UserRepository              userRepository;
-    private final ChatSummaryRepository       chatSummaryRepository;
-    private final GalleryImageRepository      galleryImageRepository;
-    private final TeamFileRepository          teamFileRepository;
-    private final PdfDocumentRepository       pdfDocumentRepository;
-    private final PdfVersionRepository        pdfVersionRepository;
-    private final TranslationJobRepository    translationJobRepository;
-    private final NdaAgreementRepository      ndaAgreementRepository;
+    private final LocaleContentRepository      localeContentRepository;
+    private final UiMessageRepository          uiMessageRepository;
+    private final TeamRepository               teamRepository;
+    private final UserRepository               userRepository;
+    private final ChatSummaryRepository        chatSummaryRepository;
+    private final GalleryImageRepository       galleryImageRepository;
+    private final TeamFileRepository           teamFileRepository;
+    private final PdfDocumentRepository        pdfDocumentRepository;
+    private final PdfVersionRepository         pdfVersionRepository;
+    private final TranslationJobRepository     translationJobRepository;
+    private final NdaAgreementRepository       ndaAgreementRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
 
     // ─── Config CRUD ───────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public Map<String, Object> getConfig() {
-        List<ProjectConfig> configs = configRepository.findAll();
-        if (configs.isEmpty()) return new HashMap<>();
-        Map<String, Object> config = configs.get(0).getConfig();
+        Optional<ProjectConfig> row = configRepository.findFirstByOrderByIdAsc();
+        if (row.isEmpty()) return new HashMap<>();
+        Map<String, Object> config = row.get().getConfig();
         return config != null ? config : new HashMap<>();
     }
 
@@ -47,10 +47,14 @@ public class ConfigService {
     public void saveConfig(Map<String, Object> config, String updatedBy) {
         try {
             Map<String, Object> existing = getConfig();
-            existing.putAll(config);
 
-            List<ProjectConfig> configs = configRepository.findAll();
-            ProjectConfig projectConfig = configs.isEmpty() ? new ProjectConfig() : configs.get(0);
+            // Deep merge: preserves keys in existing that are absent from config.
+            // Prevents any partial save (e.g. {notifications:{...}}) from wiping
+            // sibling sections (identity, nda, integrations) that were not included.
+            deepMerge(existing, config);
+
+            ProjectConfig projectConfig = configRepository.findFirstByOrderByIdAsc()
+                                                            .orElse(new ProjectConfig());
             projectConfig.setConfig(existing);
             projectConfig.setUpdatedBy(updatedBy);
             configRepository.save(projectConfig);
@@ -61,16 +65,33 @@ public class ConfigService {
         }
     }
 
-    // ─── Kimi API key — DB first, AppProperties fallback ─────────────────────
     /**
-     * Returns the Kimi API key for use at request time.
+     * Recursively merges {@code overlay} into {@code base}.
      *
-     * Priority:
-     *   1. DB — project_configs.config.integrations.kimiApiKey (set via Admin Setup Tab 7)
-     *   2. AppProperties — app.kimi.api-key (application.yml / env var APP_KIMI_API_KEY)
+     * Rules:
+     *   - Leaf values (non-Map) in overlay replace the same key in base.
+     *   - If both base and overlay have a Map for the same key, recurse.
+     *   - Keys in base not present in overlay are preserved unchanged.
      *
-     * DB takes precedence so the admin can change the key without a backend restart.
+     * This means a save of {identity:{projectName:"X"}} only updates
+     * identity.projectName and leaves all other identity fields intact.
      */
+    @SuppressWarnings("unchecked")
+    private static void deepMerge(Map<String, Object> base, Map<String, Object> overlay) {
+        for (Map.Entry<String, Object> entry : overlay.entrySet()) {
+            String key    = entry.getKey();
+            Object newVal = entry.getValue();
+            Object oldVal = base.get(key);
+            if (newVal instanceof Map && oldVal instanceof Map) {
+                deepMerge((Map<String, Object>) oldVal, (Map<String, Object>) newVal);
+            } else {
+                base.put(key, newVal);
+            }
+        }
+    }
+
+    // ─── Kimi API key — DB first, AppProperties fallback ─────────────────────
+
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
     public String getKimiApiKey() {
@@ -86,73 +107,55 @@ public class ConfigService {
         } catch (Exception e) {
             log.warn("Could not read Kimi key from DB config: {}", e.getMessage());
         }
-        // Fallback to application.yml / environment variable
         return appProperties.getKimi().getApiKey();
     }
 
     // ─── Danger Zone ──────────────────────────────────────────────────────────
 
-    /**
-     * Option 1 — Reset Data.
-     *
-     * Clears locale_content only.
-     * Preserves: users, teams, project_config, language definitions, ui_messages.
-     * Use this to wipe translated content and start fresh translations via Tab 2.
-     */
     @Transactional
     public void resetData() {
         localeContentRepository.deleteAll();
-        log.warn("[DangerZone] Reset Data complete — locale_content cleared");
+        log.warn("[DangerZone] Reset Data complete -- locale_content cleared");
     }
 
-    /**
-     * Option 2 — Factory Reset.
-     *
-     * Clears all content and configuration. Preserves only superadmin user accounts.
-     * Languages (EN + ZH definitions) are preserved so the app UI still loads.
-     * Backend returns to fresh-install state — all team data, config and files are gone.
-     */
     @Transactional
     public void factoryReset() {
-        // Content
         localeContentRepository.deleteAll();
         translationJobRepository.deleteAll();
 
         // UI strings: keep EN (system fallback), clear all other languages
         uiMessageRepository.deleteAll(
             uiMessageRepository.findAll().stream()
-                .filter(m -> !"en".equals(m.getLanguageCode()))
+                .filter(m -> !"en".equalsIgnoreCase(m.getLanguageCode()))
                 .collect(Collectors.toList())
         );
 
-        // Files — clear all uploaded content
-        pdfVersionRepository.deleteAll();
-        pdfDocumentRepository.deleteAll();
-        teamFileRepository.deleteAll();
-        galleryImageRepository.deleteAll();
-        chatSummaryRepository.deleteAll();
+        // Project config: wipe everything
+        configRepository.deleteAll();
 
-        // Teams — cleared; admin must reconfigure via Tab 5
+        // Teams and related content
+        teamFileRepository.deleteAll();
         teamRepository.deleteAll();
 
-        // Users — keep only superadmin accounts; clear NDAs and reset tokens for all
+        // Files and gallery
+        galleryImageRepository.deleteAll();
+        pdfVersionRepository.deleteAll();
+        pdfDocumentRepository.deleteAll();
+
+        // Chat
+        chatSummaryRepository.deleteAll();
+
+        // Auth tokens
         ndaAgreementRepository.deleteAll();
         passwordResetTokenRepository.deleteAll();
+
+        // Users: keep only superadmins
         userRepository.deleteAll(
             userRepository.findAll().stream()
-                .filter(u -> !"superadmin".equals(u.getRole()))
+                .filter(u -> !"ROLE_SUPERADMIN".equals(u.getRole()))
                 .collect(Collectors.toList())
         );
 
-        // Project config — reset to empty; admin must reconfigure via Admin Setup
-        List<ProjectConfig> configs = configRepository.findAll();
-        if (!configs.isEmpty()) {
-            ProjectConfig pc = configs.get(0);
-            pc.setConfig(new HashMap<>());
-            pc.setUpdatedBy("factory-reset");
-            configRepository.save(pc);
-        }
-
-        log.warn("[DangerZone] FACTORY RESET complete — superadmin user accounts preserved, everything else cleared");
+        log.warn("[DangerZone] Factory Reset complete");
     }
 }
