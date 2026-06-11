@@ -140,7 +140,7 @@ const OverviewPage: React.FC = () => {
       <div style={{ marginBottom: 20, padding: '20px 24px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, lineHeight: 1.2 }}>
-            {identity.projectName || 'RAOSS Hub'}
+            {identity.projectName || 'The Hub'}
           </h1>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: identity.description ? 8 : 0 }}>
             {[identity.productCode, identity.companyName].filter(Boolean).join(' · ')}

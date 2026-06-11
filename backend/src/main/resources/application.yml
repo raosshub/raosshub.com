@@ -1,14 +1,14 @@
 server:
-  port: 8080
+  port: 8081
   servlet:
     context-path: /
 
 spring:
   application:
-    name: raosshub-backend
+    name: hub-backend
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/raosshub}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/raosshub_test}
     username: ${SPRING_DATASOURCE_USERNAME:raoss}
     password: ${SPRING_DATASOURCE_PASSWORD:raoss_dev_2024}
     driver-class-name: org.postgresql.Driver
@@ -77,7 +77,7 @@ app:
 
   cors:
     # Comma-separated. Override via APP_CORS_ALLOWED_ORIGINS in production.
-    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost,http://localhost:80}
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001,http://localhost,http://localhost:80}
 
 logging:
   level:

@@ -1,6 +1,7 @@
 package com.raosshub.config;
 
 import com.raosshub.entity.User;
+import com.raosshub.repository.ProjectConfigRepository;
 import com.raosshub.repository.UserRepository;
 import com.raosshub.repository.NdaAgreementRepository;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +11,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Runs on every startup. All inserts use ON CONFLICT DO NOTHING.
  *
@@ -18,23 +22,38 @@ import org.springframework.stereotype.Component;
  *   Every other language (ZH, FR, DE, AR ...) gets its UI strings via
  *   Kimi translation in Admin Setup → Language & Translation → Set Default.
  *   The t() fallback chain handles missing strings: current → default(EN) → hardcoded param.
- *
- *   ZH rows that already exist in the database from schema.sql are preserved
- *   by ON CONFLICT DO NOTHING — this seed never overwrites anything.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
-    private final UserRepository          userRepository;
-    private final NdaAgreementRepository  ndaAgreementRepository;
-    private final PasswordEncoder         passwordEncoder;
-    private final JdbcTemplate            jdbcTemplate;
+    private final UserRepository           userRepository;
+    private final NdaAgreementRepository   ndaAgreementRepository;
+    private final ProjectConfigRepository  projectConfigRepository;
+    private final PasswordEncoder          passwordEncoder;
+    private final JdbcTemplate             jdbcTemplate;
 
     private static final String UPSERT =
         "INSERT INTO ui_messages (key, language_code, value) VALUES (?, ?, ?) " +
         "ON CONFLICT (key, language_code) DO NOTHING";
+
+    // Default Site Agreement text — seeded into project_config on first startup
+    // if no agreement text is already configured. Admin can edit it in Tab 6.
+    private static final String DEFAULT_SITE_AGREEMENT_TEXT =
+        "# Site Agreement\n\n" +
+        "## Confidential Access\n" +
+        "This is a private product development portal. " +
+        "Access is restricted to authorised users only.\n\n" +
+        "## Authorised Use\n" +
+        "You agree to use this portal only for its intended purpose. " +
+        "Sharing credentials or content with unauthorised parties is prohibited.\n\n" +
+        "## Data Protection\n" +
+        "Your personal data is handled in accordance with applicable data " +
+        "protection regulations. We do not share your data with third parties.\n\n" +
+        "## Intellectual Property\n" +
+        "All content and materials on this portal are the intellectual property " +
+        "of the owning organisation. All rights reserved.";
 
     @Override
     public void run(String... args) {
@@ -43,8 +62,8 @@ public class DataInitializer implements CommandLineRunner {
             "ALTER TABLE nda_agreements ADD COLUMN IF NOT EXISTS accepted_version VARCHAR(50)"
         );
         ensureAdminUser(null, null, null);
-        ensureDefaultUser();
         seedEnUiMessages();
+        seedDefaultNdaText();
     }
 
     // ─── Users ────────────────────────────────────────────────────────────────
@@ -56,12 +75,12 @@ public class DataInitializer implements CommandLineRunner {
      *
      * @param username  new username, or null/blank to keep "admin"
      * @param password  new password, or null/blank to keep "RaossAdmin2024!"
-     * @param email     new email,    or null/blank to keep "admin@raoss.com"
+     * @param email     new email,    or null/blank to keep "admin@example.com"
      */
     public void ensureAdminUser(String username, String password, String email) {
         String u = (username != null && !username.isBlank()) ? username : "admin";
         String p = (password != null && !password.isBlank()) ? password : "RaossAdmin2024!";
-        String e = (email    != null && !email.isBlank())    ? email    : "admin@raoss.com";
+        String e = (email    != null && !email.isBlank())    ? email    : "admin@example.com";
 
         User admin = userRepository.findByUsername(u).orElse(null);
         if (admin == null) {
@@ -83,25 +102,46 @@ public class DataInitializer implements CommandLineRunner {
         log.info("[Init] Admin user ready ({})", u);
     }
 
-    private void ensureDefaultUser() {
-        if (userRepository.findByUsername("rizan").isPresent()) return;
-        User u = new User();
-        u.setUsername("rizan");
-        u.setEmail("rizan@raoss.com");
-        u.setFirstName("Rizan");
-        u.setLastName("User");
-        u.setRole("user");
-        u.setTeams(new String[]{"all"});
-        u.setCanViewActivity(false);
-        u.setIsActive(true);
-        u.setPasswordHash(passwordEncoder.encode("RaossUser2024!"));
-        userRepository.save(u);
-        log.info("[Init] Default user ready");
+    // ─── Site Agreement ───────────────────────────────────────────────────────
+
+    /**
+     * Seeds the default Site Agreement text into project_config on every startup
+     * if no agreement text is already configured. Idempotent — admin changes in
+     * Tab 6 are never overwritten (only seeds when text_en is null or blank).
+     */
+    @SuppressWarnings("unchecked")
+    public void seedDefaultNdaText() {
+        try {
+            var opt = projectConfigRepository.findFirstByOrderByIdAsc();
+            if (opt.isEmpty()) return; // No config row yet — schema.sql handles fresh installs
+
+            var cfg = opt.get();
+            var raw = cfg.getConfig();
+            if (!(raw instanceof Map)) return;
+
+            Map<String, Object> configMap = new HashMap<>((Map<String, Object>) raw);
+            Object ndaRaw = configMap.get("nda");
+            Map<String, Object> ndaMap = (ndaRaw instanceof Map)
+                ? new HashMap<>((Map<String, Object>) ndaRaw)
+                : new HashMap<>();
+
+            String existing = (String) ndaMap.get("text_en");
+            if (existing != null && !existing.isBlank()) return; // Already configured — do not overwrite
+
+            ndaMap.put("text_en",  DEFAULT_SITE_AGREEMENT_TEXT);
+            ndaMap.putIfAbsent("title",    "Site Agreement");
+            ndaMap.putIfAbsent("showMode", "every_login");
+            configMap.put("nda", ndaMap);
+            cfg.setConfig(configMap);
+            projectConfigRepository.save(cfg);
+            log.info("[Init] Default site agreement seeded");
+
+        } catch (Exception e) {
+            log.warn("[Init] Failed to seed default agreement: {}", e.getMessage());
+        }
     }
 
     // ─── EN UI string seeds ────────────────────────────────────────────────────
-    // Only EN is seeded. Every key must have a hardcoded EN fallback in t() calls.
-    // Other languages are populated by running Kimi translation in Tab 2.
 
     private void en(String key, String value) {
         jdbcTemplate.update(UPSERT, key, "en", value);
@@ -148,11 +188,13 @@ public class DataInitializer implements CommandLineRunner {
         en("tool_sign_out",     "Sign Out");
         en("tool_project_config","Project Config");
 
-        // ── NDA ───────────────────────────────────────────────────────────────
-        en("nda_subtitle",  "Confidentiality & Access Terms");
-        en("nda_checkbox",  "I have read and agree to the confidentiality agreement.");
-        en("nda_btn_agree", "I Agree");
-        en("nda_btn_decline","Decline & Exit");
+        // ── NDA / Site Agreement modal ────────────────────────────────────────
+        en("nda_title",         "Site Agreement");
+        en("nda_subtitle",      "Access Terms & Conditions");
+        en("nda_checkbox",      "I have read and agree to the terms above.");
+        en("nda_btn_agree",     "I Agree");
+        en("nda_btn_decline",   "Decline & Exit");
+        en("nda_required",      "REQUIRED");
 
         // ── Notifications ────────────────────────────────────────────────────
         en("notif_title", "Notifications");
@@ -198,7 +240,7 @@ public class DataInitializer implements CommandLineRunner {
         en("log_loading",       "Loading...");
         en("log_no_records",    "No records found");
         en("log_records_found", "records found");
-        en("log_accept_nda",    "Accepted NDA");
+        en("log_accept_nda",    "Accepted Agreement");
         en("col_details",       "Details");
         en("render_error",      "Page render error.");
 
@@ -240,7 +282,7 @@ public class DataInitializer implements CommandLineRunner {
         en("ov_action_team",    "Team");
         en("ov_no_content",     "No content yet. Go to Admin Setup \u2192 Dashboard Settings to add content.");
 
-        // ── Milestone status (stored EN, displayed via t()) ───────────────────
+        // ── Milestone status ──────────────────────────────────────────────────
         en("status_planned",     "Planned");
         en("status_in_progress", "In Progress");
         en("status_completed",   "Completed");
@@ -274,7 +316,7 @@ public class DataInitializer implements CommandLineRunner {
         en("tab_teams_label",         "Teams");
         en("tab_teams_desc",          "Add, edit, reorder teams, assign icons");
         en("tab_notifications_label", "Notification Settings");
-        en("tab_notifications_desc",  "Version display, NDA text & enforcement");
+        en("tab_notifications_desc",  "Version display, agreement text & enforcement");
         en("tab_integrations_label",  "Integrations");
         en("tab_integrations_desc",   "Kimi API key, email SMTP, Danger Zone");
         en("tab_hubassist_label",     "Hub Assist");
@@ -336,7 +378,6 @@ public class DataInitializer implements CommandLineRunner {
         en("lt_select_none",          "None");
         en("lt_selected",             "selected");
         en("lt_translate_selected",   "Translate Selected");
-        en("lt_preflight",            "Pre-flight check\u2026");
 
         // ── Dashboard Settings tab (dt_*) ─────────────────────────────────────
         en("dt_exec_summary",        "Executive Summary");
@@ -422,12 +463,11 @@ public class DataInitializer implements CommandLineRunner {
         en("int_load_fail",              "Failed to load integrations config");
         en("int_reloading",              "Reloading\u2026");
 
-        // ── Language dropdown (Add Language form) ─────────────────────────────
+        // ── Language dropdown ─────────────────────────────────────────────────
         en("lt_select_language",  "Select a language\u2026");
         en("lt_custom_language",  "Other / Custom (enter manually)");
 
-        // ── NDA modal ─────────────────────────────────────────────────────────
-        en("nda_title",       "Non-Disclosure Agreement");
+        // ── NDA modal keys (legacy item keys kept for backward compat) ─────────
         en("nda_item1_title", "Confidentiality:");
         en("nda_item1_body",  "All project information, including technical specifications, design files, source code, and business strategies, is strictly confidential.");
         en("nda_item2_title", "Non-Disclosure:");
@@ -439,7 +479,7 @@ public class DataInitializer implements CommandLineRunner {
         en("nda_item5_title", "Consequences:");
         en("nda_item5_body",  "Violation of this agreement may result in immediate access revocation and legal action.");
 
-        // ── Tab 7 — Backend status ─────────────────────────────────────────
+        // ── Tab 7 — Backend status ────────────────────────────────────────────
         en("int_backend_status",   "Backend Status");
         en("int_backend_online",   "Online");
         en("int_backend_offline",  "Offline");
@@ -447,7 +487,7 @@ public class DataInitializer implements CommandLineRunner {
         en("int_backend_refresh",  "Refresh");
         en("int_backend_ms",       "ms");
 
-        // ── Tab 7 — SMTP test ─────────────────────────────────────────────
+        // ── Tab 7 — SMTP test ─────────────────────────────────────────────────
         en("int_smtp_test_btn",     "Test SMTP");
         en("int_smtp_testing",      "Testing\u2026");
         en("int_smtp_connected",    "SMTP Connected");
@@ -455,12 +495,12 @@ public class DataInitializer implements CommandLineRunner {
         en("int_smtp_ssl_required", "SSL (required for port 465)");
         en("int_smtp_starttls_note","STARTTLS (recommended)");
 
-        // ── Tab 7 — NDA editor ────────────────────────────────────────────
-        en("int_nda_section",       "NDA Agreement");
-        en("int_nda_section_desc",  "Appears in the NDA modal after login. Supports Markdown: **bold**, *italic*, # Heading, - Bullet");
+        // ── Tab 7 — NDA editor (legacy keys) ──────────────────────────────────
+        en("int_nda_section",       "Site Agreement");
+        en("int_nda_section_desc",  "Appears in the agreement modal after login. Supports Markdown: **bold**, *italic*, # Heading, - Bullet");
         en("int_nda_edit_btn",      "Edit");
         en("int_nda_preview_btn",   "Preview");
-        en("int_nda_placeholder",   "# Non-Disclosure Agreement\n\nAll information is strictly confidential.");
+        en("int_nda_placeholder",   "# Site Agreement\n\nThis is a private portal.");
         en("int_nda_preview_empty", "Nothing to preview \u2014 add content in Edit mode.");
         en("int_nda_bold",   "B");
         en("int_nda_italic", "I");
@@ -469,17 +509,18 @@ public class DataInitializer implements CommandLineRunner {
         en("int_nda_h3",     "H3");
         en("int_nda_bullet", "\u2022");
 
-        // ── Tab 6 — Notification Settings ─────────────────────────────────
+        // ── Tab 6 — Notification Settings ────────────────────────────────────
         en("tab6_version_section",       "Version Display");
         en("tab6_version_desc",          "Control whether the project version number is visible to all users.");
         en("tab6_show_version",          "Show version number to users");
         en("tab6_version_shown",         "Version is visible in the interface");
         en("tab6_version_hidden",        "Version is hidden from users");
-        en("tab6_nda_section",           "NDA Agreement Text");
-        en("tab6_nda_desc",              "This content appears in the NDA modal after every login. Supports Markdown: **bold**, *italic*, # Heading, - Bullet");
+        en("tab6_current_version",       "Current version");
+        en("tab6_nda_section",           "Site Agreement");
+        en("tab6_nda_desc",              "Shown to users before accessing the portal. Supports Markdown: **bold**, *italic*, # Heading, - Bullet");
         en("tab6_nda_edit_btn",          "Edit");
         en("tab6_nda_preview_btn",       "Preview");
-        en("tab6_nda_placeholder",       "# Non-Disclosure Agreement\n\nAll information in this system is strictly confidential.");
+        en("tab6_nda_placeholder",       "# Site Agreement\n\nThis is a private portal. Access is restricted to authorised users only.");
         en("tab6_nda_preview_empty",     "Nothing to preview \u2014 add content in Edit mode.");
         en("tab6_nda_bold",              "B");
         en("tab6_nda_italic",            "I");
@@ -487,13 +528,19 @@ public class DataInitializer implements CommandLineRunner {
         en("tab6_nda_h2",                "H2");
         en("tab6_nda_h3",                "H3");
         en("tab6_nda_bullet",            "\u2022");
-        en("tab6_enforcement_section",   "NDA Enforcement");
-        en("tab6_enforcement_desc",      "Controls when users are required to re-accept the NDA.");
-        en("tab6_force_version_label",   "Force re-acceptance when project version changes");
-        en("tab6_force_version_hint",    "When ON: users accept once per version. The NDA re-appears when the version in Project Identity is updated. When OFF: users accept at every login session.");
-        en("tab6_current_version",       "Current version");
-        en("tab6_save_success",          "Notification settings saved");
+        en("tab6_nda_title_label",       "Agreement Title");
+        en("tab6_nda_title_ph",          "e.g. Site Agreement, Non-Disclosure Agreement");
+        en("tab6_nda_title_hint",        "Displayed as the modal heading. Leave blank to use the default title.");
+        en("tab6_show_mode_label",       "Show Agreement");
+        en("tab6_show_every_login",      "Every login");
+        en("tab6_show_once",             "Once per account");
+        en("tab6_show_every_login_hint", "User must accept on every login. Recommended for NDA mode.");
+        en("tab6_show_once_hint",        "User accepts once and is never prompted again.");
+        en("tab6_save_success",          "Settings saved");
         en("tab6_save_fail",             "Save failed");
+        en("tab6_translate_no_kimi",     "Kimi API key not configured \u2014 agreement saved in EN only");
+        en("tab6_translating",           "Translating to {lang}\u2026");
+        en("tab6_translate_partial",     "Translation failed for: {langs}");
 
         // ── Tab 1 — Project Identity Tab ──────────────────────────────────────
         en("tab1_loading",               "Loading\u2026");
@@ -549,10 +596,6 @@ public class DataInitializer implements CommandLineRunner {
         en("tab1_trademark",             "Trademark Notice");
         en("tab1_copyright",             "Copyright Notice");
 
-        en("tab6_translate_no_kimi",  "Kimi API key not configured \u2014 NDA saved in EN only");
-        en("tab6_translating",        "Translating to {lang}\u2026");
-        en("tab6_translate_partial",  "Translation failed for: {langs}");
-
         // ── Forgot / Reset Password ───────────────────────────────────────────
         en("forgot_title",         "Forgot Password");
         en("forgot_subtitle",      "Enter your username and we'll send a reset link.");
@@ -580,8 +623,8 @@ public class DataInitializer implements CommandLineRunner {
         en("reset_err_expired",    "This reset link has expired or has already been used.");
 
         // ── Initial Setup wizard (Flow 1) ─────────────────────────────────────
-        en("setup_welcome_title",     "Welcome to the Hub");
-        en("setup_welcome_subtitle",  "Your Product Development Portal");
+        en("setup_welcome_title",     "Welcome to the HUB");
+        en("setup_welcome_subtitle",  "Your product development portal");
         en("setup_s1_label",          "Admin Account");
         en("setup_s1_title",          "Set Admin Credentials");
         en("setup_s1_desc",           "Replace the default admin credentials with your own.");
@@ -622,7 +665,7 @@ public class DataInitializer implements CommandLineRunner {
         en("setup_s4_kimi",           "Saving Kimi API key\u2026");
         en("setup_s4_language",       "Setting default language\u2026");
         en("setup_s4_strings",        "Seeding UI strings\u2026");
-        en("setup_s4_done_title",     "Setup complete. RAOSS Hub is ready.");
+        en("setup_s4_done_title",     "Setup complete. The HUB is ready.");
         en("setup_s4_go",             "Go to Dashboard");
         en("setup_s4_retry",          "Retry");
         en("setup_s4_start_over",     "Start Over");

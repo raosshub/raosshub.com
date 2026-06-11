@@ -64,17 +64,20 @@ api.interceptors.response.use(
 
 // ─── Auth API ──────────────────────────────────────────────────────────────
 export const authApi = {
-  login:          (username: string, password: string) =>
-                    api.post('/auth/login', { username, password }),
-  me:             () => api.get('/auth/me'),
-  refresh:        () => api.post('/auth/refresh', {}),
-  logout:         () => api.post('/auth/logout', {}),
-  forgotPassword: (username: string, lang: string) =>
-                    api.post('/auth/forgot-password', { username, lang }),
-  resetPassword:  (token: string, password: string) =>
-                    api.post('/auth/reset-password', { token, password }),
-  acceptNda:      () => api.post('/auth/nda'),
-  ndaStatus:      () => api.get('/auth/nda/status'),
+  login:             (username: string, password: string) =>
+                       api.post('/auth/login', { username, password }),
+  me:                () => api.get('/auth/me'),
+  refresh:           () => api.post('/auth/refresh', {}),
+  logout:            () => api.post('/auth/logout', {}),
+  forgotPassword:    (username: string, lang: string) =>
+                       api.post('/auth/forgot-password', { username, lang }),
+  resetPassword:     (token: string, password: string) =>
+                       api.post('/auth/reset-password', { token, password }),
+  acceptNda:         () => api.post('/auth/nda'),
+  ndaStatus:         () => api.get('/auth/nda/status'),
+  // Once-per-account mode: permanent acceptance check (not cleared on login).
+  // Requires config.nda.showMode === 'once' + AuthService conditional delete.
+  checkNdaAccepted:  () => api.get('/auth/nda/accepted'),
 };
 
 // ─── i18n content API ─────────────────────────────────────────────────────
@@ -130,10 +133,8 @@ export const configApi = {
   get:  () => api.get('/config'),
   save: (config: Record<string, unknown>) => api.post('/config', config),
 
-  // SMTP test — backend opens TCP socket to host:port and returns { success, message }
   testSmtp:     (smtp: Record<string, unknown>) => api.post('/config/smtp/test', { smtp }),
 
-  // Danger Zone — confirmation tokens must match server-side check exactly
   resetData:    () => api.post('/config/reset-data',    { confirm: 'RESET' }),
   factoryReset: () => api.post('/config/factory-reset', { confirm: 'FACTORY RESET' }),
 };

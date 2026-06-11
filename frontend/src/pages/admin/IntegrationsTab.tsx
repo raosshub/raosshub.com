@@ -332,7 +332,7 @@ const IntegrationsTab = React.forwardRef<IntegrationsTabHandle, Props>(
         </div>
         <div style={{ marginBottom: 12 }}>
           <label style={labelSt}>{t('int_smtp_from', 'From Address')}</label>
-          <input style={inputSt} value={form.smtp.fromAddress} onChange={e => updateSmtp('fromAddress', e.target.value)} placeholder="RAOSS Hub <noreply@example.com>" />
+          <input style={inputSt} value={form.smtp.fromAddress} onChange={e => updateSmtp('fromAddress', e.target.value)} placeholder="The Hub <noreply@example.com>" />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: form.smtp.port === 465 ? 'not-allowed' : 'pointer', userSelect: 'none' }}>

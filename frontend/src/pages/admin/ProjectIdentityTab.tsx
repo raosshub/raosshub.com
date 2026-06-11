@@ -354,7 +354,7 @@ const ProjectIdentityTab = React.forwardRef<ProjectIdentityTabHandle, Props>(
           <Field label={t('tab1_company_name', 'Company Name') + ' *'}>
             <input type="text" value={form.companyName}
               onChange={e => updateField('companyName', e.target.value)}
-              placeholder="e.g. RAOSS Technologies" style={inputSt} />
+              placeholder="e.g. your company name" style={inputSt} />
           </Field>
 
           <Field label={t('tab1_status', 'Status')}>
@@ -375,7 +375,7 @@ const ProjectIdentityTab = React.forwardRef<ProjectIdentityTabHandle, Props>(
           <Field label={t('tab1_site_title', 'Site Name (Browser Tab Title)')}>
             <input type="text" value={form.siteTitle}
               onChange={e => updateField('siteTitle', e.target.value)}
-              placeholder={form.projectName || 'Smart Home Hub Pro — RAOSS'}
+              placeholder={form.projectName || 'My product name'}
               style={inputSt} />
             <div style={hintSt}>{t('tab1_site_title_hint', 'Sets the browser tab title. If empty, Project Name is used.')}</div>
           </Field>

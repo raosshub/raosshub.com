@@ -441,7 +441,7 @@ export default function InitialSetupPage({ onComplete }: Props) {
                 <div style={{ marginTop: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, padding: '14px 18px', background: 'rgba(5,150,105,0.07)', border: '1px solid rgba(5,150,105,0.3)', borderRadius: 'var(--radius-sm)' }}>
                     <span style={{ fontSize: 22, color: '#059669' }}>{'\u2713'}</span>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: '#059669' }}>{t('setup_s4_done_title', 'Setup complete. RAOSS Hub is ready.')}</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: '#059669' }}>{t('setup_s4_done_title', 'Setup complete. The Hub is ready.')}</span>
                   </div>
                   <button onClick={handleGoToDashboard} style={primaryBtn(false)}>{t('setup_s4_go', 'Go to Dashboard')}</button>
                 </div>
