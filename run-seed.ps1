@@ -37,7 +37,7 @@ Write-Host "psql      : $($psqlCmd.Source)" -ForegroundColor Gray
 
 # -- 2. Test DB connection before listing files ----------------
 Write-Host "Testing   : raosshub @ 127.0.0.1:5432 ..." -ForegroundColor Gray
-$connTest = & psql -U raoss -d raosshub -h 127.0.0.1 -p 5432 -c "SELECT 1;" 2>&1
+$connTest = & psql -U raoss -d raosshub_test -h 127.0.0.1 -p 5432 -c "SELECT 1;" 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Cannot connect to database." -ForegroundColor Red
@@ -103,7 +103,7 @@ if (-not (Test-Path $sqlFile)) {
 # -- 4. Run ----------------------------------------------------
 Write-Host "Running   : $SqlFileName" -ForegroundColor Cyan
 Write-Host ""
-psql -U raoss -d raosshub -h 127.0.0.1 -p 5432 `
+psql -U raoss -d raosshub_test -h 127.0.0.1 -p 5432 `
      -v ON_ERROR_STOP=0 `
      -f $sqlFile
 

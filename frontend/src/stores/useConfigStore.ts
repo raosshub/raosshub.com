@@ -35,8 +35,10 @@ export interface ProjectIdentity {
 // NDA body text stored per-language in config.
 // Version enforcement (forceOnVersionChange) removed — NDA is per-session only.
 export interface NdaConfig {
-  text?:    string;   // legacy single-language field (backward compat)
-  [key: string]: unknown; // text_en, text_zh, text_ar ... dynamic keys
+  text?:     string;
+  title?:    string;
+  showMode?: 'every_login' | 'once';
+  [key: string]: unknown;
 }
 
 export interface NotificationsConfig {

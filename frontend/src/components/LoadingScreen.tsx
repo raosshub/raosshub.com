@@ -27,7 +27,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ text = 'Initialising...' 
           marginBottom: 32,
         }}
       >
-        RAOSS <span style={{ color: 'var(--accent)' }}>Hub</span>
+        The <span style={{ color: 'var(--accent)' }}>Hub</span>
       </div>
       <div
         style={{

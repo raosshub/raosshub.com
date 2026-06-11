@@ -8,6 +8,7 @@ import com.raosshub.entity.PasswordResetToken;
 import com.raosshub.entity.User;
 import com.raosshub.repository.NdaAgreementRepository;
 import com.raosshub.repository.PasswordResetTokenRepository;
+import com.raosshub.repository.ProjectConfigRepository;
 import com.raosshub.repository.UserRepository;
 import com.raosshub.security.JwtTokenProvider;
 import com.raosshub.security.UserDetailsImpl;
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -30,15 +32,16 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuthService {
 
-    private final AuthenticationManager      authenticationManager;
-    private final JwtTokenProvider           tokenProvider;
-    private final UserRepository             userRepository;
+    private final AuthenticationManager        authenticationManager;
+    private final JwtTokenProvider             tokenProvider;
+    private final UserRepository               userRepository;
     private final PasswordResetTokenRepository resetTokenRepository;
-    private final NdaAgreementRepository     ndaAgreementRepository;
+    private final NdaAgreementRepository       ndaAgreementRepository;
+    private final ProjectConfigRepository      projectConfigRepository;  // for NDA showMode check
     // ConfigService removed — was only used for forceOnVersionChange (deleted in v3.1.5)
-    private final PasswordEncoder            passwordEncoder;
-    private final AuditLogService            auditLogService;
-    private final EmailService               emailService;   // ← added in v3.2.0
+    private final PasswordEncoder              passwordEncoder;
+    private final AuditLogService              auditLogService;
+    private final EmailService                 emailService;             // added in v3.2.0
 
     /**
      * Internal token pair — never serialised to JSON.
@@ -66,9 +69,16 @@ public class AuthService {
             user.setLastLogin(Instant.now());
             userRepository.save(user);
 
-            // NDA is per-session — always clear acceptance on login.
-            // Version-based enforcement removed (v3.1.5).
-            ndaAgreementRepository.findByUserId(user.getId()).ifPresent(ndaAgreementRepository::delete);
+            // Clear NDA acceptance on login — UNLESS showMode is 'once'.
+            // For 'once' mode the permanent acceptance record must be preserved
+            // so GET /api/auth/nda/accepted returns true on subsequent logins,
+            // allowing App.tsx to skip the agreement modal silently.
+            // For 'every_login' mode (default) the record is always cleared,
+            // which is the original v3 session-based behaviour.
+            if (!isNdaOnceMode()) {
+                ndaAgreementRepository.findByUserId(user.getId())
+                    .ifPresent(ndaAgreementRepository::delete);
+            }
 
             String accessToken  = tokenProvider.generateAccessToken(authentication);
             String refreshToken = tokenProvider.generateRefreshToken(authentication);
@@ -85,10 +95,6 @@ public class AuthService {
 
     // ─── Refresh ──────────────────────────────────────────────────────────────
 
-    /**
-     * Validates the refresh token from the httpOnly cookie, generates a fresh
-     * access token and a new refresh token (rotation), and returns both.
-     */
     @Transactional
     public AuthTokens refresh(String refreshToken) {
         if (!tokenProvider.validateToken(refreshToken) || !tokenProvider.isRefreshToken(refreshToken)) {
@@ -124,20 +130,8 @@ public class AuthService {
 
     // ─── Password reset ───────────────────────────────────────────────────────
 
-    /**
-     * Generates a 1-hour password reset token and sends the reset email.
-     *
-     * Security: never reveals whether the username exists — the response is
-     * identical for known and unknown users.
-     *
-     * @param request      contains username + lang (user's selected language)
-     * @param frontendUrl  the base URL of the frontend (from Origin header),
-     *                     used to build the reset link: {frontendUrl}/?reset={token}
-     */
     @Transactional
     public void forgotPassword(ForgotPasswordRequest request, String frontendUrl) {
-        // Accept email or username — merge into a single assignment so the
-        // variable is effectively final and usable inside the lambda below.
         User user = userRepository.findByUsername(request.getUsername())
             .or(() -> userRepository.findByEmail(request.getUsername()))
             .orElse(null);
@@ -146,8 +140,6 @@ public class AuthService {
             return;
         }
 
-        // Invalidate any existing unused tokens for this user.
-        // PasswordResetTokenRepository has findByToken() only — no findByUserId().
         resetTokenRepository.findAll().stream()
             .filter(t -> t.getUser().getId().equals(user.getId()) && !t.getUsed())
             .forEach(t -> {
@@ -158,12 +150,11 @@ public class AuthService {
         PasswordResetToken resetToken = new PasswordResetToken();
         resetToken.setUser(user);
         resetToken.setToken(UUID.randomUUID().toString());
-        resetToken.setExpiresAt(Instant.now().plusSeconds(3600)); // 1 hour
+        resetToken.setExpiresAt(Instant.now().plusSeconds(3600));
         resetTokenRepository.save(resetToken);
 
         log.info("[Auth] Password reset token generated for user: {}", user.getUsername());
 
-        // Send reset email (Option A: falls back to console log if SMTP absent)
         String lang = request.getLang() != null ? request.getLang() : "en";
         emailService.sendPasswordResetEmail(user, resetToken.getToken(), frontendUrl, lang);
     }
@@ -178,7 +169,6 @@ public class AuthService {
         }
 
         User user = token.getUser();
-        // User entity field is passwordHash — Lombok generates setPasswordHash(), not setPassword()
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         userRepository.save(user);
 
@@ -187,6 +177,31 @@ public class AuthService {
     }
 
     // ─── Private helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Returns true when config.nda.showMode is "once".
+     *
+     * Called in login() to decide whether to clear the nda_agreements record.
+     * Any exception (missing table, null config, unexpected JSONB shape) returns
+     * false so the safe default — always show the agreement — is preserved.
+     */
+    @SuppressWarnings("unchecked")
+    private boolean isNdaOnceMode() {
+        try {
+            return projectConfigRepository.findFirstByOrderByIdAsc()
+                .map(cfg -> {
+                    Object raw = cfg.getConfig();
+                    if (!(raw instanceof Map)) return false;
+                    Object nda = ((Map<?, ?>) raw).get("nda");
+                    if (!(nda instanceof Map)) return false;
+                    return "once".equals(((Map<?, ?>) nda).get("showMode"));
+                })
+                .orElse(false);
+        } catch (Exception e) {
+            log.debug("[Auth] NDA mode check failed, defaulting to every_login: {}", e.getMessage());
+            return false;
+        }
+    }
 
     private UserDto toUserDto(UserDetailsImpl user) {
         return UserDto.builder()

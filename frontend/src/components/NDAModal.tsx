@@ -67,10 +67,10 @@ const NDAModal: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '22px 28px', borderBottom: '1px solid var(--border)', background: 'var(--bg-overlay)' }}>
           <div>
             <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>
-              {t('nda_title', 'Non-Disclosure Agreement')}
+              {(nda as any).title?.trim() || t('nda_title', 'Site Agreement')}
             </h2>
             <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-              {t('nda_subtitle', 'Confidentiality & Access Terms')}
+              {t('nda_subtitle', 'Access Terms & Conditions')}
             </p>
           </div>
           <span style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--red-dim)', color: 'var(--red)', fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', border: '1px solid var(--red-dim)' }}>

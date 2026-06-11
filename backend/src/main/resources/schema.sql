@@ -1,10 +1,13 @@
 -- ═══════════════════════════════════════════════════════════════
--- RAOSS Hub v3 — PostgreSQL 15+ Schema
+-- The HUB v3 — PostgreSQL 15+ Schema
 -- Tables: languages, ui_messages, locale_content, users, teams,
 --   project_config, audit_log, chat_summaries, pdf_documents,
 --   pdf_versions, gallery_images, team_files, nda_agreements,
 --   password_reset_tokens, translation_jobs
--- Seeded: EN + ZH languages, UI strings, default admin, teams, config
+-- Seeded: EN language only, EN UI strings, default admin
+-- Note:  ZH and other languages are added by the customer via
+--        Admin Setup → Language & Translation after initial setup.
+--        Teams are created by the customer via Admin Setup → Teams.
 -- ═══════════════════════════════════════════════════════════════
 
 -- ─── 1. LANGUAGES ──────────────────────────────────────────────
@@ -19,9 +22,9 @@ CREATE TABLE IF NOT EXISTS languages (
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- EN only — additional languages added by customer via Admin Setup
 INSERT INTO languages (code, name, name_native, is_rtl, is_active, is_default) VALUES
-    ('en', 'English', 'English', false, true, true),
-    ('zh', 'Chinese', '中文', false, true, false)
+    ('en', 'English', 'English', false, true, true)
 ON CONFLICT (code) DO NOTHING;
 
 -- ─── 2. UI MESSAGES ────────────────────────────────────────────
@@ -37,6 +40,8 @@ CREATE INDEX IF NOT EXISTS idx_ui_msgs_lang ON ui_messages(language_code);
 CREATE INDEX IF NOT EXISTS idx_ui_msgs_key  ON ui_messages(key);
 
 -- ─── Seed EN UI strings ─────────────────────────────────────────
+-- EN is the base language. All other languages are translated via Kimi
+-- in Admin Setup → Language & Translation after initial setup.
 INSERT INTO ui_messages (key, language_code, value) VALUES
     ('loading_init', 'en', 'Initialising...'),
     ('loading_config', 'en', 'Loading configuration...'),
@@ -195,165 +200,6 @@ INSERT INTO ui_messages (key, language_code, value) VALUES
     ('render_error', 'en', 'Render error occurred.')
 ON CONFLICT (key, language_code) DO NOTHING;
 
--- ─── Seed ZH UI strings ─────────────────────────────────────────
-INSERT INTO ui_messages (key, language_code, value) VALUES
-    ('loading_init', 'zh', '初始化中...'),
-    ('loading_config', 'zh', '加载配置...'),
-    ('loading_locale', 'zh', '加载语言文件...'),
-    ('loading_auth', 'zh', '验证凭据...'),
-    ('loading_done', 'zh', '就绪'),
-    ('login_title', 'zh', '登录'),
-    ('login_subtitle', 'zh', '请输入您的凭据继续'),
-    ('login_label_email', 'zh', '邮箱 / 用户名'),
-    ('login_label_password', 'zh', '密码'),
-    ('login_remember', 'zh', '记住我'),
-    ('login_btn', 'zh', '登录'),
-    ('login_forgot', 'zh', '忘记密码？'),
-    ('login_err_empty', 'zh', '请填写所有字段。'),
-    ('login_err_invalid', 'zh', '凭据无效，请重试。'),
-    ('login_err_network', 'zh', '连接错误，请重试。'),
-    ('nav_overview', 'zh', '概览'),
-    ('nav_settings', 'zh', '设置'),
-    ('nav_teams_group', 'zh', '团队'),
-    ('tool_theme_light', 'zh', '浅色模式'),
-    ('tool_theme_dark', 'zh', '深色模式'),
-    ('tool_hub_assist', 'zh', 'HUB 助手'),
-    ('tool_activity_log', 'zh', '活动日志'),
-    ('tool_sign_out', 'zh', '退出登录'),
-    ('tool_project_config', 'zh', '项目配置'),
-    ('topbar_hub_label', 'zh', 'HUB 仪表盘'),
-    ('nda_subtitle', 'zh', '保密与访问条款'),
-    ('nda_checkbox', 'zh', '我已阅读并同意保密协议。'),
-    ('nda_btn_agree', 'zh', '我同意'),
-    ('nda_btn_decline', 'zh', '拒绝并退出'),
-    ('notif_title', 'zh', '通知'),
-    ('notif_clear', 'zh', '全部清除'),
-    ('notif_empty', 'zh', '暂无通知'),
-    ('btn_save', 'zh', '保存'),
-    ('btn_cancel', 'zh', '取消'),
-    ('btn_edit', 'zh', '编辑'),
-    ('btn_delete', 'zh', '删除'),
-    ('btn_add', 'zh', '添加'),
-    ('btn_remove', 'zh', '移除'),
-    ('btn_close', 'zh', '关闭'),
-    ('btn_confirm', 'zh', '确认'),
-    ('btn_back', 'zh', '返回'),
-    ('btn_download', 'zh', '下载'),
-    ('btn_upload', 'zh', '上传'),
-    ('btn_retry', 'zh', '重试'),
-    ('btn_search', 'zh', '搜索'),
-    ('cfg_tab_identity', 'zh', '项目标识'),
-    ('cfg_tab_overview', 'zh', '概览内容'),
-    ('cfg_tab_teams', 'zh', '团队'),
-    ('cfg_tab_users', 'zh', '用户'),
-    ('cfg_tab_documents', 'zh', '文档与翻译'),
-    ('cfg_tab_system', 'zh', 'API 与系统'),
-    ('cfg_tab_auditlog', 'zh', '审计日志'),
-    ('cfg_page_title', 'zh', '项目配置'),
-    ('cfg_page_subtitle', 'zh', '超级管理员 - Hub 设置与项目管理'),
-    ('settings_title', 'zh', '设置'),
-    ('settings_profile', 'zh', '个人资料'),
-    ('settings_appearance', 'zh', '外观'),
-    ('settings_language', 'zh', '语言'),
-    ('settings_theme', 'zh', '主题'),
-    ('settings_nda', 'zh', '保密协议'),
-    ('settings_nda_view', 'zh', '查看协议'),
-    ('settings_nda_status', 'zh', '状态'),
-    ('settings_nda_accepted', 'zh', '已接受'),
-    ('settings_lang_en', 'zh', 'English'),
-    ('settings_lang_zh', 'zh', '中文'),
-    ('settings_theme_dark', 'zh', '深色'),
-    ('settings_theme_light', 'zh', '浅色'),
-    ('settings_switch_light', 'zh', '切换到浅色'),
-    ('settings_switch_dark', 'zh', '切换到深色'),
-    ('ov_kpi_actions', 'zh', '待办事项'),
-    ('ov_kpi_milestones', 'zh', '里程碑'),
-    ('ov_kpi_teams', 'zh', '团队'),
-    ('ov_no_milestones', 'zh', '暂无里程碑'),
-    ('ov_no_actions', 'zh', '暂无待办事项'),
-    ('tab_scope', 'zh', '范围'),
-    ('tab_deliverables', 'zh', '交付物'),
-    ('tab_collaboration', 'zh', 'HUB 聊天'),
-    ('tab_files', 'zh', '文件'),
-    ('tab_pdf', 'zh', 'PDF 审阅'),
-    ('tab_gallery', 'zh', '图库'),
-    ('audit_title', 'zh', '审计日志'),
-    ('audit_empty', 'zh', '暂无审计日志记录。'),
-    ('audit_loading', 'zh', '加载审计日志...'),
-    ('audit_col_time', 'zh', '时间'),
-    ('audit_col_user', 'zh', '用户'),
-    ('audit_col_action', 'zh', '操作'),
-    ('audit_col_resource', 'zh', '资源'),
-    ('audit_col_detail', 'zh', '详情'),
-    ('audit_col_ip', 'zh', 'IP'),
-    ('actlog_title', 'zh', '活动日志'),
-    ('actlog_empty', 'zh', '暂无活动记录。'),
-    ('priority_high', 'zh', '高'),
-    ('priority_medium', 'zh', '中'),
-    ('priority_low', 'zh', '低'),
-    ('status_planned', 'zh', '计划中'),
-    ('status_current', 'zh', '进行中'),
-    ('status_done', 'zh', '已完成'),
-    ('status_delayed', 'zh', '延迟'),
-    ('status_on_hold', 'zh', '暂停'),
-    ('status_in_dev', 'zh', '开发中'),
-    ('status_approved', 'zh', '已批准'),
-    ('status_rejected', 'zh', '已拒绝'),
-    ('status_pending', 'zh', '待审批'),
-    ('search_placeholder', 'zh', '搜索...'),
-    ('version_prefix', 'zh', '文档版本'),
-    ('toast_config', 'zh', '配置'),
-    ('toast_settings', 'zh', '设置'),
-    ('toast_system', 'zh', '系统'),
-    ('reset_pwd_title', 'zh', '设置新密码'),
-    ('reset_pwd_subtitle', 'zh', '请在下方输入您的新密码。'),
-    ('reset_pwd_btn', 'zh', '确认设置'),
-    ('reset_pwd_err_empty', 'zh', '请填写所有字段。'),
-    ('reset_pwd_err_mismatch', 'zh', '两次密码不一致。'),
-    ('reset_pwd_err_weak', 'zh', '密码须包含字母和数字，至少8位。'),
-    ('reset_pwd_success', 'zh', '密码已重置！请重新登录。'),
-    ('reset_pwd_expired', 'zh', '链接已失效，请重新申请。'),
-    ('quarter_remove_confirm', 'zh', '删除此季度及所有里程碑？'),
-    ('team_restore_confirm', 'zh', '恢复团队 "{name}"？'),
-    ('team_restored', 'zh', '团队 "{name}" 已恢复'),
-    ('team_remove_confirm', 'zh', '删除团队 "{name}"？\n\n团队数据将被归档。'),
-    ('team_archived', 'zh', '团队已归档'),
-    ('pwd_err_current', 'zh', '请输入当前密码'),
-    ('pwd_err_empty_new', 'zh', '请输入新密码'),
-    ('pwd_err_short', 'zh', '密码至少8位'),
-    ('pwd_err_letter', 'zh', '密码须包含字母'),
-    ('pwd_err_number', 'zh', '密码须包含数字'),
-    ('pwd_err_mismatch', 'zh', '两次密码不一致'),
-    ('pwd_success', 'zh', '密码已更新'),
-    ('pwd_err_incorrect', 'zh', '当前密码不正确'),
-    ('pwd_err_failed', 'zh', '密码更新失败: '),
-    ('filter_all_users', 'zh', '全部用户'),
-    ('filter_all_actions', 'zh', '全部操作'),
-    ('filter_all_resources', 'zh', '全部资源'),
-    ('filter_login', 'zh', '登录'),
-    ('filter_logout', 'zh', '退出'),
-    ('filter_upload', 'zh', '上传'),
-    ('filter_delete', 'zh', '删除'),
-    ('filter_update', 'zh', '更新'),
-    ('filter_create', 'zh', '创建'),
-    ('filter_auth', 'zh', '认证'),
-    ('filter_gallery', 'zh', '图库'),
-    ('filter_files', 'zh', '文件'),
-    ('filter_content', 'zh', '内容'),
-    ('filter_config_res', 'zh', '配置'),
-    ('btn_filter', 'zh', '筛选'),
-    ('btn_export_csv', 'zh', '导出 CSV'),
-    ('btn_prev', 'zh', '上一页'),
-    ('btn_next', 'zh', '下一页'),
-    ('log_click_filter', 'zh', '点击筛选加载日志'),
-    ('log_loading', 'zh', '加载中...'),
-    ('log_no_records', 'zh', '无记录'),
-    ('log_records_found', 'zh', '条记录'),
-    ('log_accept_nda', 'zh', '接受协议'),
-    ('col_details', 'zh', '详情'),
-    ('render_error', 'zh', '页面渲染出错。')
-ON CONFLICT (key, language_code) DO NOTHING;
-
 -- ─── 3. LOCALE CONTENT ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS locale_content (
     id           BIGSERIAL PRIMARY KEY,
@@ -366,13 +212,11 @@ CREATE TABLE IF NOT EXISTS locale_content (
 );
 CREATE INDEX IF NOT EXISTS idx_locale_lang_path ON locale_content(language_code, section_path);
 
--- Seed empty locale content structure for EN and ZH
--- (Content populated via HUB Assist or admin UI after deployment)
+-- Seed empty locale content structure for EN only
+-- (Content populated via Admin Setup after deployment)
 INSERT INTO locale_content (language_code, section_path, content) VALUES
     ('en', 'sections', '{}'),
-    ('en', 'sections.overview', '{}'),
-    ('zh', 'sections', '{}'),
-    ('zh', 'sections.overview', '{}')
+    ('en', 'sections.overview', '{}')
 ON CONFLICT (language_code, section_path) DO NOTHING;
 
 -- ─── 4. USERS ──────────────────────────────────────────────────
@@ -394,33 +238,19 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 
--- Seed default superadmin (password: RaossAdmin2024!)
--- BCrypt hash of "RaossAdmin2024!" rounds=12
+-- Seed default superadmin (password: HubAdmin2024!)
+-- Credentials replaced during Initial Setup wizard on first login.
+-- DataInitializer.ensureAdminUser() also sets these on every startup.
 INSERT INTO users (username, email, password_hash, first_name, last_name, role, teams, can_view_activity, is_active)
 VALUES (
     'admin',
-    'admin@raoss.com',
+    'admin@example.com',
     '$2b$12$BRs./aV7KbhMHY3P8gQdVeB/jkt9RKgjnm9RBGAz1VdPdCXgqGEli',
-    'RAOSS',
-    'Admin',
+    'System',
+    'Administrator',
     'superadmin',
     ARRAY['all'],
     true,
-    true
-)
-ON CONFLICT (username) DO NOTHING;
-
--- Seed default user (password: RaossUser2024!)
-INSERT INTO users (username, email, password_hash, first_name, last_name, role, teams, can_view_activity, is_active)
-VALUES (
-    'rizan',
-    'rizan@raoss.com',
-    '$2b$12$IPFc09d1paaQLGUvFGUkDuo6qBqacIFQKWW56spO88nHU3AtGegpO',
-    'Rizan',
-    'User',
-    'user',
-    ARRAY['all'],
-    false,
     true
 )
 ON CONFLICT (username) DO NOTHING;
@@ -447,27 +277,19 @@ CREATE TABLE IF NOT EXISTS nda_agreements (
 );
 
 -- ─── 7. TEAMS ──────────────────────────────────────────────────
+-- No teams seeded. Customer creates their own teams via Admin Setup.
+-- Empty on fresh install — required for Initial Setup detection to work.
 CREATE TABLE IF NOT EXISTS teams (
     id         BIGSERIAL PRIMARY KEY,
-    team_id    VARCHAR(50) UNIQUE NOT NULL,    -- 'react', 'pcba', 'firmware'
+    team_id    VARCHAR(50) UNIQUE NOT NULL,
     name_en    VARCHAR(100) NOT NULL,
     name_zh    VARCHAR(100),
-    icon       VARCHAR(50),                    -- matches icon key
+    icon       VARCHAR(50),
     sort_order INT DEFAULT 0,
     is_active  BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_teams_team_id ON teams(team_id);
-
-INSERT INTO teams (team_id, name_en, name_zh, icon, sort_order) VALUES
-    ('react', 'React (App)', 'React（应用）', 'react', 1),
-    ('pcba', 'PCBA', 'PCBA', 'pcba', 2),
-    ('firmware', 'Firmware', '固件', 'firmware', 3),
-    ('tft', 'TFT Display', 'TFT 显示', 'tft', 4),
-    ('router', 'Router / Wi-Fi', '路由器 / Wi-Fi', 'router', 5),
-    ('charger', 'Charger / Power', '充电器 / 电源', 'charger', 6),
-    ('shell', 'Mechanical Shell', '机械外壳', 'shell', 7)
-ON CONFLICT (team_id) DO NOTHING;
 
 -- ─── 8. PROJECT CONFIG ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS project_config (
@@ -477,14 +299,16 @@ CREATE TABLE IF NOT EXISTS project_config (
     updated_by VARCHAR(100)
 );
 
--- Seed default config matching v2 defaults
+-- Default config — customer customises via Admin Setup → Project Identity
+-- nda.text_en is the default Site Agreement shown to users on first login.
+-- Admin can edit it in Admin Setup → Tab 6 (Notifications).
 INSERT INTO project_config (config) VALUES (
     '{
         "identity": {
-            "name": "RAOSS Hub",
+            "name": "The HUB",
             "chip": "",
-            "version": "3.0",
-            "status": "In Development",
+            "version": "",
+            "status": "",
             "description": "",
             "startDate": "",
             "targetDate": "",
@@ -495,14 +319,14 @@ INSERT INTO project_config (config) VALUES (
             "icpEn": "",
             "icpZh": ""
         },
-        "branding": {
-            "logoFile": "logo.png",
-            "model3dFile": "",
-            "favicon": "favicon.ico"
-        },
+        "branding": {},
         "api": {
-            "maxScreenshots": 3,
-            "proxyUrl": "http://localhost:3001"
+            "maxScreenshots": 3
+        },
+        "nda": {
+            "title": "Site Agreement",
+            "showMode": "every_login",
+            "text_en": "# Site Agreement\n\n## Confidential Access\nThis is a private product development portal. Access is restricted to authorised users only.\n\n## Authorised Use\nYou agree to use this portal only for its intended purpose. Sharing credentials or content with unauthorised parties is prohibited.\n\n## Data Protection\nYour personal data is handled in accordance with applicable data protection regulations. We do not share your data with third parties.\n\n## Intellectual Property\nAll content and materials on this portal are the intellectual property of the owning organisation. All rights reserved."
         }
     }'::jsonb
 )
@@ -513,8 +337,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
     id         BIGSERIAL PRIMARY KEY,
     user_id    BIGINT REFERENCES users(id) ON DELETE SET NULL,
     username   VARCHAR(100),
-    action     VARCHAR(50) NOT NULL,     -- login, logout, upload, delete, update, create, accept
-    resource   VARCHAR(50) NOT NULL,     -- auth, locales, teams, pdf, gallery, files, config, users
+    action     VARCHAR(50) NOT NULL,
+    resource   VARCHAR(50) NOT NULL,
     record_id  BIGINT,
     detail_en  TEXT,
     detail_zh  TEXT,
@@ -610,7 +434,7 @@ CREATE TABLE IF NOT EXISTS translation_jobs (
     source_lang  VARCHAR(5) NOT NULL,
     target_lang  VARCHAR(5) NOT NULL,
     section_path VARCHAR(200) NOT NULL,
-    status       VARCHAR(20) DEFAULT 'pending',  -- pending, in_progress, completed, failed
+    status       VARCHAR(20) DEFAULT 'pending',
     started_at   TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     error_message TEXT,
@@ -620,10 +444,7 @@ CREATE INDEX IF NOT EXISTS idx_trans_status ON translation_jobs(status);
 
 -- ─── Done ──────────────────────────────────────────────────────
 
-
--- Write permissions for application user raoss
--- Required for DataInitializer and seed scripts to INSERT/UPDATE.
--- Placed at end of schema.sql so all tables exist before grants run.
+-- Write permissions for application user
 GRANT USAGE ON SCHEMA public TO raoss;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO raoss;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO raoss;

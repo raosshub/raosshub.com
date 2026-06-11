@@ -42,8 +42,6 @@ public class AuthController {
     private final AppProperties          appProperties;
 
     // ── Login ──────────────────────────────────────────────────────────────────
-    // Sets hub_refresh as httpOnly cookie so Axios can silently refresh the
-    // 15-minute access token. Returns only { accessToken, user }.
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<Map<String, Object>>> login(
             @Valid @RequestBody LoginRequest request,
@@ -128,12 +126,6 @@ public class AuthController {
     }
 
     // ── Forgot / reset password ───────────────────────────────────────────────
-    // Both endpoints are public (no auth required) — SecurityConfig permits them.
-    //
-    // forgotPassword: extracts the frontend base URL from the Origin header so
-    // EmailService can build the correct reset link (e.g. http://localhost:5173
-    // in dev, https://raosshub.com in production). Falls back to localhost:5173
-    // when Origin is absent (e.g. Postman, curl).
     @PostMapping("/forgot-password")
     public ResponseEntity<ApiResponse<Void>> forgotPassword(
             @Valid @RequestBody ForgotPasswordRequest request,
@@ -177,31 +169,38 @@ public class AuthController {
 
         auditLogService.log(
             userDetails.getUsername(), "accept", "auth", userDetails.getId(),
-            "NDA accepted", getClientIp(httpRequest)
+            "Agreement accepted", getClientIp(httpRequest)
         );
 
         return ResponseEntity.ok(ApiResponse.ok(null));
     }
 
-    // ── NDA: status ───────────────────────────────────────────────────────────
-    // NDA is per-session — login service deletes the record on every login.
-    // Status is simply: does a record exist for this user?
-    //   false = no record (login deleted it)   → NDA modal shows
-    //   true  = record exists (same session)   → NDA modal hidden
-    //
-    // Version-based enforcement removed. forceOnVersionChange toggle in
-    // Admin Setup Tab 6 no longer has any effect on the backend.
+    // ── NDA: session status ───────────────────────────────────────────────────
+    // Used for every_login mode.
+    // Login service deletes the record on login → always false after login.
+    // Returns true only after user has accepted this session.
     @GetMapping("/nda/status")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Boolean>> getNdaStatus(
             @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        boolean accepted = ndaAgreementRepository.existsByUserId(userDetails.getId());
+        return ResponseEntity.ok(ApiResponse.ok(accepted));
+    }
 
+    // ── NDA: permanent acceptance check (once per account mode) ──────────────
+    // Used for once mode only.
+    // Login service does NOT delete the record for users in once mode —
+    // see AuthService.login() where the delete is conditional on showMode.
+    // Returns true if user has ever accepted — even across logins.
+    @GetMapping("/nda/accepted")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<Boolean>> checkNdaAccepted(
+            @AuthenticationPrincipal UserDetailsImpl userDetails) {
         boolean accepted = ndaAgreementRepository.existsByUserId(userDetails.getId());
         return ResponseEntity.ok(ApiResponse.ok(accepted));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
     private String getClientIp(HttpServletRequest request) {
         String xf = request.getHeader("X-Forwarded-For");
         return xf != null ? xf.split(",")[0] : request.getRemoteAddr();

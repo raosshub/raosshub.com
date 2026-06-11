@@ -11,13 +11,34 @@ export interface NotificationsTabHandle {
   saving: boolean;
 }
 
-// forceOnVersionChange removed — NDA is per-session only (login always clears record)
 interface NotifForm {
-  showVersion: boolean;
-  ndaText:     string;
+  showVersion:  boolean;
+  ndaTitle:     string;                       // admin-editable modal title
+  ndaText:      string;                       // markdown body
+  ndaShowMode:  'every_login' | 'once';       // show on every login or once per account
 }
 
-const defaultForm: NotifForm = { showVersion: true, ndaText: '' };
+const defaultForm: NotifForm = {
+  showVersion: true,
+  ndaTitle:    '',
+  ndaText:     '',
+  ndaShowMode: 'every_login',
+};
+
+const DEFAULT_AGREEMENT_TEXT =
+`# Site Agreement
+
+## Confidential Access
+This is a private product development portal. Access is restricted to authorised users only.
+
+## Authorised Use
+You agree to use this portal only for its intended purpose. Sharing credentials or content with unauthorised parties is prohibited.
+
+## Data Protection
+Your personal data is handled in accordance with applicable data protection regulations. We do not share your data with third parties.
+
+## Intellectual Property
+All content and materials on this portal are the intellectual property of the owning organisation. All rights reserved.`;
 
 const cardSt:  React.CSSProperties = {
   background: 'var(--bg-elevated)', border: '1px solid var(--border)',
@@ -27,6 +48,13 @@ const inputSt: React.CSSProperties = {
   width: '100%', padding: '8px 11px', borderRadius: 'var(--radius-sm)',
   border: '1px solid var(--border)', background: 'var(--bg-input)',
   color: 'var(--text-primary)', fontSize: 13, outline: 'none', boxSizing: 'border-box',
+};
+const labelSt: React.CSSProperties = {
+  fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
+  letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 5, display: 'block',
+};
+const hintSt: React.CSSProperties = {
+  fontSize: 11, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.5,
 };
 
 function SectionHeading({ color, label }: { color: string; label: string }) {
@@ -51,7 +79,7 @@ function Toggle({ on, onChange, locked }: { on: boolean; onChange: () => void; l
   );
 }
 
-// ─── Markdown renderer (for NDA preview) ─────────────────────────────────────
+// ─── Markdown renderer ────────────────────────────────────────────────────────
 function esc(s: string) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function inlineFmt(t: string) {
   return esc(t)
@@ -102,12 +130,11 @@ const NotificationsTab = React.forwardRef<
   const [showPreview,       setShowPreview]       = useState(false);
   const ndaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Notify parent of state changes (drives AdminSetupPage save/discard bar)
   useEffect(() => {
     if (onStateChange) onStateChange(hasChanges, saving);
   }, [hasChanges, saving, onStateChange]);
 
-  // ── Load from DB ─────────────────────────────────────────────────────────────
+  // ── Load ─────────────────────────────────────────────────────────────────────
   const loadFromDB = useCallback(async () => {
     setLoading(true);
     try {
@@ -116,8 +143,9 @@ const NotificationsTab = React.forwardRef<
       const notif = (res.data?.data?.notifications || {}) as Record<string, any>;
       const loaded: NotifForm = {
         showVersion: notif.showVersion !== false,
-        // text_en is the canonical key; fall back to legacy text field
-        ndaText:     (nda.text_en as string) || (nda.text as string) || '',
+        ndaTitle:    (nda.title    as string) || '',
+        ndaText:     (nda.text_en  as string) || (nda.text as string) || '',
+        ndaShowMode: ((nda.showMode as string) === 'once') ? 'once' : 'every_login',
       };
       setForm(loaded);
       setOriginal(loaded);
@@ -137,19 +165,16 @@ const NotificationsTab = React.forwardRef<
 
   // ── Save ─────────────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
-    // Guard: form.ndaText is '' until loadFromDB completes.
-    // Without this, saving while loading would send {text_en:''} and
-    // overwrite legitimate NDA content already in the database.
     if (loading) return;
     setSaving(true);
     try {
-      // Build NDA payload — text_en is the master; other languages are Kimi-translated
       const ndaPayload: Record<string, unknown> = {
-        text_en: form.ndaText,
-        // forceOnVersionChange removed — no version enforcement
+        text_en:  form.ndaText,
+        title:    form.ndaTitle,
+        showMode: form.ndaShowMode,
       };
 
-      // Auto-translate to every active non-EN language if Kimi is configured
+      // Auto-translate body text to every active non-EN language if Kimi configured
       const nonEnLangs = languages.filter(l => l.isActive && l.code !== 'en');
 
       if (nonEnLangs.length > 0 && form.ndaText.trim()) {
@@ -157,10 +182,7 @@ const NotificationsTab = React.forwardRef<
         const kimiKey = (cfgRes.data?.data?.integrations?.kimiApiKey as string) || '';
 
         if (!kimiKey.trim()) {
-          addToast(
-            t('tab6_translate_no_kimi', 'Kimi API key not configured — NDA saved in EN only'),
-            'info'
-          );
+          addToast(t('tab6_translate_no_kimi', 'Kimi API key not configured — agreement saved in EN only'), 'info');
         } else {
           setTranslating(true);
           const failedLangs: string[] = [];
@@ -168,68 +190,55 @@ const NotificationsTab = React.forwardRef<
           for (let i = 0; i < nonEnLangs.length; i++) {
             const lang = nonEnLangs[i];
             setTranslationStatus(
-              t('tab6_translating', 'Translating to {lang}…')
-                .replace('{lang}', lang.nameNative || lang.name) +
+              t('tab6_translating', 'Translating to {lang}…').replace('{lang}', lang.nameNative || lang.name) +
               ` (${i + 1}/${nonEnLangs.length})`
             );
-
             try {
               const res = await kimiApi.chat({
                 model:      'moonshot-v1-32k',
                 max_tokens: 4000,
                 messages:   [{
                   role:    'user',
-                  content: `Translate the following markdown NDA text to ${lang.name} (${lang.code}). ` +
+                  content: `Translate the following markdown agreement text to ${lang.name} (${lang.code}). ` +
                            `Return ONLY the translated markdown text, preserving all markdown ` +
                            `formatting exactly. No explanation or preamble:\n\n${form.ndaText}`,
                 }],
               });
               const translated = ((res.data?.choices?.[0]?.message?.content) as string || '').trim();
-              if (translated) {
-                ndaPayload[`text_${lang.code}`] = translated;
-              } else {
-                failedLangs.push(lang.nameNative || lang.name);
-              }
-            } catch {
-              failedLangs.push(lang.nameNative || lang.name);
-            }
+              if (translated) { ndaPayload[`text_${lang.code}`] = translated; }
+              else             { failedLangs.push(lang.nameNative || lang.name); }
+            } catch { failedLangs.push(lang.nameNative || lang.name); }
           }
 
           setTranslating(false);
           setTranslationStatus('');
 
           if (failedLangs.length > 0) {
-            addToast(
-              t('tab6_translate_partial', 'Translation failed for: {langs}')
-                .replace('{langs}', failedLangs.join(', ')),
-              'warning'
-            );
+            addToast(t('tab6_translate_partial', 'Translation failed for: {langs}').replace('{langs}', failedLangs.join(', ')), 'warning');
           }
         }
       }
 
-      // Only include nda in the payload when the text was actually changed.
-      // If admin only toggled showVersion, sending {nda: {text_en: existingText}}
-      // is harmless but sending {nda: {text_en: ''}} would erase all NDA content.
-      // This guard also protects against a race where save fires before loadFromDB
-      // has populated form.ndaText.
+      // Only include nda in payload when something nda-related changed
+      const ndaChanged = form.ndaText     !== original.ndaText
+                      || form.ndaTitle    !== original.ndaTitle
+                      || form.ndaShowMode !== original.ndaShowMode;
+
       const savePayload: Record<string, unknown> = {
         notifications: { showVersion: form.showVersion },
       };
-      if (form.ndaText !== original.ndaText) {
-        savePayload.nda = ndaPayload;
-      }
+      if (ndaChanged) savePayload.nda = ndaPayload;
 
       await configApi.save(savePayload);
 
       setOriginal(form);
       setHasChanges(false);
-      addToast(t('tab6_save_success', 'Notification settings saved'), 'success');
+      addToast(t('tab6_save_success', 'Settings saved'), 'success');
     } catch (e: any) {
       addToast(t('tab6_save_fail', 'Save failed') + ': ' + e.message, 'error');
     }
     setSaving(false);
-  }, [form, languages, addToast, t]);
+  }, [form, original, languages, addToast, t, loading]);
 
   const handleReset = useCallback(() => {
     if (!window.confirm(t('admin_discard_changes', 'Discard all unsaved changes?'))) return;
@@ -244,7 +253,6 @@ const NotificationsTab = React.forwardRef<
     get saving()     { return saving; },
   }), [handleSave, handleReset, hasChanges, saving]);
 
-  // NDA toolbar — inserts Markdown syntax at textarea cursor position
   const insertMarkdown = useCallback((before: string, after = '') => {
     const el = ndaRef.current;
     if (!el) return;
@@ -261,8 +269,7 @@ const NotificationsTab = React.forwardRef<
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: 200, fontSize: 13, color: 'var(--text-muted)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, fontSize: 13, color: 'var(--text-muted)' }}>
         {t('lt_loading', 'Loading\u2026')}
       </div>
     );
@@ -296,21 +303,34 @@ const NotificationsTab = React.forwardRef<
         </label>
       </div>
 
-      {/* ── 2. NDA TEXT EDITOR ─────────────────────────────────────────────── */}
+      {/* ── 2. SITE AGREEMENT ──────────────────────────────────────────────── */}
       <div style={cardSt}>
-        <SectionHeading color="var(--accent)" label={t('tab6_nda_section', 'NDA Agreement Text')} />
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: 12 }}>
-          {t('tab6_nda_desc', 'Appears in the NDA modal after every login. Supports Markdown: **bold**, *italic*, # Heading, - Bullet')}
+        <SectionHeading color="var(--accent)" label={t('tab6_nda_section', 'Site Agreement')} />
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: 16 }}>
+          {t('tab6_nda_desc', 'Shown to users before accessing the portal. Supports Markdown: **bold**, *italic*, # Heading, - Bullet')}
         </div>
 
-        {/* Toolbar */}
+        {/* Agreement Title */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelSt}>{t('tab6_nda_title_label', 'Agreement Title')}</label>
+          <input
+            type="text"
+            value={form.ndaTitle}
+            onChange={e => update('ndaTitle', e.target.value)}
+            placeholder={t('tab6_nda_title_ph', 'e.g. Site Agreement, Non-Disclosure Agreement')}
+            style={inputSt}
+          />
+          <p style={hintSt}>{t('tab6_nda_title_hint', 'Displayed as the modal heading. Leave blank to use the default title.')}</p>
+        </div>
+
+        {/* Markdown toolbar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
           {[
-            { label: t('tab6_nda_h1', 'H1'),  action: () => insertMarkdown('# ') },
-            { label: t('tab6_nda_h2', 'H2'),  action: () => insertMarkdown('## ') },
-            { label: t('tab6_nda_h3', 'H3'),  action: () => insertMarkdown('### ') },
-            { label: t('tab6_nda_bold', 'B'),  action: () => insertMarkdown('**', '**'), bold: true },
-            { label: t('tab6_nda_italic', 'I'), action: () => insertMarkdown('*', '*'), italic: true },
+            { label: t('tab6_nda_h1', 'H1'),     action: () => insertMarkdown('# ') },
+            { label: t('tab6_nda_h2', 'H2'),     action: () => insertMarkdown('## ') },
+            { label: t('tab6_nda_h3', 'H3'),     action: () => insertMarkdown('### ') },
+            { label: t('tab6_nda_bold', 'B'),    action: () => insertMarkdown('**', '**'), bold: true },
+            { label: t('tab6_nda_italic', 'I'),  action: () => insertMarkdown('*', '*'), italic: true },
             { label: t('tab6_nda_bullet', '\u2022'), action: () => insertMarkdown('- ') },
           ].map(btn => (
             <button key={btn.label} onClick={btn.action}
@@ -344,11 +364,9 @@ const NotificationsTab = React.forwardRef<
             ref={ndaRef}
             value={form.ndaText}
             onChange={e => update('ndaText', e.target.value)}
-            placeholder={t('tab6_nda_placeholder',
-              '# Non-Disclosure Agreement\n\nAll information in this system is strictly confidential.')}
+            placeholder={DEFAULT_AGREEMENT_TEXT}
             rows={12}
-            style={{ ...inputSt, fontFamily: "'DM Mono', monospace", fontSize: 12,
-              resize: 'vertical', lineHeight: 1.6, minHeight: 200 }}
+            style={{ ...inputSt, fontFamily: "'DM Mono', monospace", fontSize: 12, resize: 'vertical', lineHeight: 1.6, minHeight: 200 }}
           />
         ) : (
           <div
@@ -364,20 +382,41 @@ const NotificationsTab = React.forwardRef<
         )}
 
         {translating && translationStatus && (
-          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8,
-            fontSize: 12, color: 'var(--text-muted)' }}>
-            <span style={{ width: 12, height: 12, borderRadius: '50%',
-              border: '2px solid var(--accent)', borderTopColor: 'transparent',
-              flexShrink: 0, animation: 'spin 0.8s linear infinite' }} />
+          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', flexShrink: 0, animation: 'spin 0.8s linear infinite' }} />
             {translationStatus}
           </div>
         )}
-      </div>
 
-      {/* NDA Enforcement section intentionally removed.
-          NDA is per-session only: login always clears the acceptance record.
-          The forceOnVersionChange toggle has been removed from both frontend
-          and backend. NDA appears on every login regardless of version. */}
+        {/* ── Show Agreement toggle ────────────────────────────────────────── */}
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+          <label style={labelSt}>{t('tab6_show_mode_label', 'Show Agreement')}</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {([
+              { value: 'every_login' as const, label: t('tab6_show_every_login', 'Every login') },
+              { value: 'once'        as const, label: t('tab6_show_once',        'Once per account') },
+            ] as const).map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => update('ndaShowMode', opt.value)}
+                style={{
+                  padding: '7px 16px', borderRadius: 'var(--radius-sm)', fontSize: 12, fontWeight: 600,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  border:      form.ndaShowMode === opt.value ? '1px solid var(--accent)' : '1px solid var(--border)',
+                  background:  form.ndaShowMode === opt.value ? 'rgba(99,102,241,0.08)' : 'var(--bg-overlay)',
+                  color:       form.ndaShowMode === opt.value ? 'var(--accent)' : 'var(--text-secondary)',
+                }}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p style={hintSt}>
+            {form.ndaShowMode === 'once'
+              ? t('tab6_show_once_hint', 'User accepts once and is never prompted again.')
+              : t('tab6_show_every_login_hint', 'User must accept on every login. Recommended for NDA mode.')}
+          </p>
+        </div>
+      </div>
 
     </div>
   );
