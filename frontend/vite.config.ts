@@ -10,11 +10,11 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    port: 3001,
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8081',
         changeOrigin: true,
         // Rewrite the cookie domain so httpOnly cookies set by the backend
         // are stored for localhost (the browser's origin) rather than being
