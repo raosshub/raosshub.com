@@ -119,6 +119,12 @@ export const teamApi = {
   getAll: () => api.get('/teams'),
 };
 
+// ─── Admin API ─────────────────────────────────────────────────────────────
+export const adminApi = {
+  reseed: (credentials?: { username?: string; password?: string; email?: string }) =>
+    api.post('/admin/reseed', credentials ?? {}),
+};
+
 // ─── Config API ────────────────────────────────────────────────────────────
 export const configApi = {
   get:  () => api.get('/config'),

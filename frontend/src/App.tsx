@@ -5,7 +5,7 @@ import { useAuthStore }   from '@/stores/useAuthStore';
 import { useI18nStore }   from '@/stores/useI18nStore';
 import { useThemeStore }  from '@/stores/useThemeStore';
 import { useConfigStore } from '@/stores/useConfigStore';
-import { healthApi, setApiToken } from '@/utils/api';
+import { healthApi, setApiToken, teamApi } from '@/utils/api';
 import LoadingScreen      from '@/components/LoadingScreen';
 import LoginScreen        from '@/components/LoginScreen';
 import NDAModal           from '@/components/NDAModal';
@@ -17,19 +17,9 @@ import SettingsPage       from '@/pages/SettingsPage';
 import HubAssistPage      from '@/pages/HubAssistPage';
 import ActivityLogPage    from '@/pages/ActivityLogPage';
 import ProjectConfigPage  from '@/pages/ProjectConfigPage';
-import AdminSetupPage     from '@/pages/admin/AdminSetupPage';
-
-// ─── NDA helper ───────────────────────────────────────────────────────────────
-// Returns true only when admin has saved actual NDA text in Admin Setup → Tab 6.
-// Used in two places: init (page load) and login→nda transition.
-// Checks text_en (canonical key) and the legacy text field.
-// When false, the nda init stage is skipped — login goes straight to app.
-function ndaHasText(nda: Record<string, unknown>): boolean {
-  return !!(
-    (nda['text_en'] as string || '').trim() ||
-    (nda['text']    as string || '').trim()
-  );
-}
+import AdminSetupPage               from '@/pages/admin/AdminSetupPage';
+import InitialSetupPage             from '@/pages/admin/InitialSetupPage';
+import ChangeDefaultLanguagePage    from '@/pages/admin/ChangeDefaultLanguagePage';
 
 // ─── Init stage machine ───────────────────────────────────────────────────────
 //
@@ -48,15 +38,50 @@ function ndaHasText(nda: Record<string, unknown>): boolean {
 //
 type InitStage = 'loading' | 'login' | 'nda' | 'app';
 
+// ─── System state detection ───────────────────────────────────────────────────
+//
+// Runs once per login after loadConfig() + loadLanguages() have both settled.
+// Returns true only when ALL THREE conditions are met:
+//   A. config.identity.projectName is blank (system never configured)
+//   B. No teams exist
+//   C. No non-EN language is set as the default
+//
+// Detection is session-only — not persisted across page loads.
+//
+async function detectInitialSetup(): Promise<boolean> {
+  try {
+    // Condition A — no project name in identity
+    const identity = useConfigStore.getState().identity;
+    const hasProjectName = identity.projectName?.trim().length > 0;
+    if (hasProjectName) return false;
+
+    // Condition B — no teams
+    const teamsRes = await teamApi.getAll();
+    const teams = teamsRes.data?.data ?? [];
+    if (teams.length > 0) return false;
+
+    // Condition C — no non-EN default language
+    const languages = useI18nStore.getState().languages;
+    const hasNonEnDefault = languages.some(l => l.isDefault && l.code !== 'en');
+    if (hasNonEnDefault) return false;
+
+    return true;
+  } catch {
+    // If detection fails for any reason, do not trigger initial setup
+    return false;
+  }
+}
+
 function App() {
   const { isAuthenticated, fetchMe, ndaAccepted, logout } = useAuthStore();
   const { loadLanguages, loadUiStrings, loadLocale, t }   = useI18nStore();
   const { applyTheme }                                    = useThemeStore();
   const { load: loadConfig }                              = useConfigStore();
 
-  const [initStage,   setInitStage]   = useState<InitStage>('loading');
-  const [loadingText, setLoadingText] = useState('Initialising...');
-  const [, setBackendOnline]          = useState(false);
+  const [initStage,        setInitStage]        = useState<InitStage>('loading');
+  const [loadingText,      setLoadingText]      = useState('Initialising...');
+  const [, setBackendOnline]                    = useState(false);
+  const [needsInitialSetup, setNeedsInitialSetup] = useState(false);
 
   // ─── One-time initialisation ───────────────────────────────────────────────
   useEffect(() => {
@@ -86,6 +111,9 @@ function App() {
           await fetchMe();
           await loadLocale();
           await loadConfig(); // NDA text + identity ready before NDA modal shows
+          // ── Initial setup detection (page refresh with stored token) ────
+          const needs = await detectInitialSetup();
+          setNeedsInitialSetup(needs);
         } catch {
           logout();
         }
@@ -99,8 +127,7 @@ function App() {
       // nda stage is always entered for authenticated sessions — matching v2.
       setTimeout(() => {
         if (useAuthStore.getState().isAuthenticated) {
-          const ndaCfg = useConfigStore.getState().nda as Record<string, unknown>;
-          setInitStage(ndaHasText(ndaCfg) ? 'nda' : 'app');
+          setInitStage('nda');
         } else {
           setInitStage('login');
         }
@@ -116,13 +143,19 @@ function App() {
       (async () => {
         await loadLocale();
         await loadConfig(); // config (NDA text) ready before NDA modal shows
+        // Auth guard: loadLocale/loadConfig make API calls; if the token
+        // expired between login() and here, auth:logout fired and logout()
+        // set isAuthenticated=false. Don't advance to nda in that case.
         if (!useAuthStore.getState().isAuthenticated) return;
-        const ndaCfg = useConfigStore.getState().nda as Record<string, unknown>;
-        setInitStage(ndaHasText(ndaCfg) ? 'nda' : 'app');
+        // ── Initial setup detection (fresh login) ────────────────────────
+        const needs = await detectInitialSetup();
+        setNeedsInitialSetup(needs);
+        setInitStage('nda');
       })();
     }
     if (!isAuthenticated && (initStage === 'app' || initStage === 'nda')) {
       setInitStage('login');
+      setNeedsInitialSetup(false); // reset on logout
     }
   }, [isAuthenticated, initStage]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -137,7 +170,7 @@ function App() {
 
   // ─── Global logout (fired by Axios interceptor on 401 after refresh fails) ─
   useEffect(() => {
-    const handler = () => { logout(); setInitStage('login'); };
+    const handler = () => { logout(); setInitStage('login'); setNeedsInitialSetup(false); };
     window.addEventListener('auth:logout', handler);
     return () => window.removeEventListener('auth:logout', handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -162,20 +195,35 @@ function App() {
     </>
   );
 
+  // ── Initial setup: system is fresh — show full-page wizard ────────────────
+  // Renders outside AppLayout (no sidebar, no topbar).
+  // onComplete() clears the flag and the normal app renders.
+  if (needsInitialSetup) {
+    return (
+      <>
+        <ToastContainer />
+        <InitialSetupPage onComplete={() => setNeedsInitialSetup(false)} />
+      </>
+    );
+  }
+
   // App stage: NDA accepted this session (guaranteed by stage machine above).
   return (
     <>
       <ToastContainer />
       <AppLayout>
         <Routes>
-          <Route path="/"             element={<OverviewPage />}      />
-          <Route path="/team/:teamId" element={<TeamPage />}          />
-          <Route path="/settings"     element={<SettingsPage />}      />
-          <Route path="/assistant"    element={<HubAssistPage />}     />
-          <Route path="/activity-log" element={<ActivityLogPage />}   />
-          <Route path="/config"       element={<ProjectConfigPage />} />
-          <Route path="/admin/setup"  element={<AdminSetupPage />}    />
-          <Route path="*"             element={<Navigate to="/" replace />} />
+          <Route path="/"                              element={<OverviewPage />}               />
+          <Route path="/team/:teamId"                  element={<TeamPage />}                   />
+          <Route path="/settings"                      element={<SettingsPage />}               />
+          <Route path="/assistant"                     element={<HubAssistPage />}              />
+          <Route path="/activity-log"                  element={<ActivityLogPage />}            />
+          <Route path="/config"                        element={<ProjectConfigPage />}          />
+          <Route path="/admin/setup"                   element={<AdminSetupPage />}             />
+          <Route path="/admin/change-default-language" element={<ChangeDefaultLanguagePage />} />
+          {/* /admin/initial-setup is only reachable via detection — redirect direct access */}
+          <Route path="/admin/initial-setup"           element={<Navigate to="/" replace />}   />
+          <Route path="*"                              element={<Navigate to="/" replace />}   />
         </Routes>
       </AppLayout>
     </>

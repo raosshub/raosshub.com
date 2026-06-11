@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useI18nStore }         from '@/stores/useI18nStore';
+import { useNavigate }              from 'react-router-dom';
+import { useI18nStore }             from '@/stores/useI18nStore';
 import { useNotificationStore } from '@/stores/useNotificationStore';
 import { languageApi, i18nApi, kimiApi } from '@/utils/api';
 import { Icons } from '@/components/icons';
@@ -64,45 +65,46 @@ const STATUS_COLOR: Record<TranslationRow['status'], string> = {
 // native name. Options sorted alphabetically by English name.
 const LANG_LOOKUP: Record<string, { name: string; nameNative: string; isRtl: boolean }> = {
   af:      { name: 'Afrikaans',             nameNative: 'Afrikaans',          isRtl: false },
-  ar:      { name: 'Arabic',                nameNative: 'العربية',             isRtl: true  },
-  bn:      { name: 'Bengali',               nameNative: 'বাংলা',               isRtl: false },
-  cs:      { name: 'Czech',                 nameNative: 'Čeština',             isRtl: false },
+  ar:      { name: 'Arabic',                nameNative: '\u0627\u0644\u0639\u0631\u0628\u064a\u0629',             isRtl: true  },
+  bn:      { name: 'Bengali',               nameNative: '\u09ac\u09be\u0982\u09b2\u09be',               isRtl: false },
+  cs:      { name: 'Czech',                 nameNative: '\u010ce\u0161tina',             isRtl: false },
   da:      { name: 'Danish',                nameNative: 'Dansk',               isRtl: false },
   de:      { name: 'German',                nameNative: 'Deutsch',             isRtl: false },
-  el:      { name: 'Greek',                 nameNative: 'Ελληνικά',            isRtl: false },
-  es:      { name: 'Spanish',               nameNative: 'Español',             isRtl: false },
-  fa:      { name: 'Persian',               nameNative: 'فارسی',               isRtl: true  },
+  el:      { name: 'Greek',                 nameNative: '\u0395\u03bb\u03bb\u03b7\u03bd\u03b9\u03ba\u03ac',            isRtl: false },
+  es:      { name: 'Spanish',               nameNative: 'Espa\u00f1ol',             isRtl: false },
+  fa:      { name: 'Persian',               nameNative: '\u0641\u0627\u0631\u0633\u06cc',               isRtl: true  },
   fi:      { name: 'Finnish',               nameNative: 'Suomi',               isRtl: false },
-  fr:      { name: 'French',                nameNative: 'Français',            isRtl: false },
-  he:      { name: 'Hebrew',                nameNative: 'עברית',               isRtl: true  },
-  hi:      { name: 'Hindi',                 nameNative: 'हिन्दी',              isRtl: false },
+  fr:      { name: 'French',                nameNative: 'Fran\u00e7ais',            isRtl: false },
+  he:      { name: 'Hebrew',                nameNative: '\u05e2\u05d1\u05e8\u05d9\u05ea',               isRtl: true  },
+  hi:      { name: 'Hindi',                 nameNative: '\u0939\u093f\u0928\u094d\u0926\u0940',              isRtl: false },
   hu:      { name: 'Hungarian',             nameNative: 'Magyar',              isRtl: false },
   id:      { name: 'Indonesian',            nameNative: 'Bahasa Indonesia',    isRtl: false },
   it:      { name: 'Italian',               nameNative: 'Italiano',            isRtl: false },
-  ja:      { name: 'Japanese',              nameNative: '日本語',              isRtl: false },
-  ko:      { name: 'Korean',                nameNative: '한국어',               isRtl: false },
+  ja:      { name: 'Japanese',              nameNative: '\u65e5\u672c\u8a9e',              isRtl: false },
+  ko:      { name: 'Korean',                nameNative: '\ud55c\uad6d\uc5b4',               isRtl: false },
   ms:      { name: 'Malay',                 nameNative: 'Bahasa Melayu',       isRtl: false },
   nl:      { name: 'Dutch',                 nameNative: 'Nederlands',          isRtl: false },
   no:      { name: 'Norwegian',             nameNative: 'Norsk',               isRtl: false },
   pl:      { name: 'Polish',                nameNative: 'Polski',              isRtl: false },
-  pt:      { name: 'Portuguese',            nameNative: 'Português',           isRtl: false },
-  ro:      { name: 'Romanian',              nameNative: 'Română',              isRtl: false },
-  ru:      { name: 'Russian',               nameNative: 'Русский',             isRtl: false },
+  pt:      { name: 'Portuguese',            nameNative: 'Portugu\u00eas',           isRtl: false },
+  ro:      { name: 'Romanian',              nameNative: 'Rom\u00e2n\u0103',              isRtl: false },
+  ru:      { name: 'Russian',               nameNative: '\u0420\u0443\u0441\u0441\u043a\u0438\u0439',             isRtl: false },
   sv:      { name: 'Swedish',               nameNative: 'Svenska',             isRtl: false },
   sw:      { name: 'Swahili',               nameNative: 'Kiswahili',           isRtl: false },
-  th:      { name: 'Thai',                  nameNative: 'ภาษาไทย',             isRtl: false },
-  tr:      { name: 'Turkish',               nameNative: 'Türkçe',              isRtl: false },
-  uk:      { name: 'Ukrainian',             nameNative: 'Українська',          isRtl: false },
-  ur:      { name: 'Urdu',                  nameNative: 'اردو',                isRtl: true  },
-  vi:      { name: 'Vietnamese',            nameNative: 'Tiếng Việt',          isRtl: false },
-  zh:      { name: 'Chinese',               nameNative: '中文',                isRtl: false },
-  'zh-tw': { name: 'Chinese (Traditional)', nameNative: '繁體中文',            isRtl: false },
+  th:      { name: 'Thai',                  nameNative: '\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22',             isRtl: false },
+  tr:      { name: 'Turkish',               nameNative: 'T\u00fcrk\u00e7e',              isRtl: false },
+  uk:      { name: 'Ukrainian',             nameNative: '\u0423\u043a\u0440\u0430\u0457\u043d\u0441\u044c\u043a\u0430',          isRtl: false },
+  ur:      { name: 'Urdu',                  nameNative: '\u0627\u0631\u062f\u0648',                isRtl: true  },
+  vi:      { name: 'Vietnamese',            nameNative: 'Ti\u1ebfng Vi\u1ec7t',          isRtl: false },
+  zh:      { name: 'Chinese',               nameNative: '\u4e2d\u6587',                isRtl: false },
+  'zh-tw': { name: 'Chinese (Traditional)', nameNative: '\u7e41\u9ad4\u4e2d\u6587',            isRtl: false },
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function LanguageTranslationTab() {
   const { t, languages, currentLang, defaultLang, loadLanguages, loadUiStrings } = useI18nStore();
   const { addToast } = useNotificationStore();
+  const navigate     = useNavigate();
 
   const [allLanguages,    setAllLanguages]    = useState<Language[]>([]);
   const [loading,         setLoading]         = useState(true);
@@ -118,6 +120,12 @@ export default function LanguageTranslationTab() {
   const [selectedLookupKey, setSelectedLookupKey] = useState('');
   const abortRef = useRef(false);
 
+  // ── Warning modal state ───────────────────────────────────────────────────
+  const [showWarning, setShowWarning] = useState(false);
+  const [warnLang,    setWarnLang]    = useState<{
+    id: number; code: string; name: string; native: string;
+  } | null>(null);
+
   const updateRow = useCallback((key: string, patch: Partial<TranslationRow>) =>
     setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r)),
   []);
@@ -129,7 +137,7 @@ export default function LanguageTranslationTab() {
       const res = await languageApi.getAll();
       setAllLanguages(res.data.data || []);
     } catch {
-      addToast(t('lt_loading', 'Loading…'), 'error');
+      addToast(t('lt_loading', 'Loading\u2026'), 'error');
     }
     setLoading(false);
   }, [addToast, t]);
@@ -137,16 +145,39 @@ export default function LanguageTranslationTab() {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   // ── Set default language ──────────────────────────────────────────────────
-  const handleSetDefault = useCallback(async (id: number, code: string) => {
-    try {
-      await languageApi.setDefault(id);
-      await loadLanguages();
-      await loadAll();
-      addToast(t('lt_default_changed', 'Default language updated'), 'success');
-    } catch {
-      addToast(t('lt_error', 'Error'), 'error');
-    }
-  }, [loadLanguages, loadAll, addToast, t]);
+  // Does NOT navigate directly — shows warning modal first.
+  // Flow 2 wizard enforces: credentials → kimi key → factory reset →
+  // reseed → verify → set default.
+  const handleSetDefault = useCallback((id: number, code: string) => {
+    const lang = allLanguages.find(l => l.id === id);
+    setWarnLang({
+      id,
+      code,
+      name:   lang?.name       || code,
+      native: lang?.nameNative || code,
+    });
+    setShowWarning(true);
+  }, [allLanguages]);
+
+  // ── Warning modal: proceed ────────────────────────────────────────────────
+  const handleWarnProceed = useCallback(() => {
+    if (!warnLang) return;
+    setShowWarning(false);
+    navigate('/admin/change-default-language', {
+      state: {
+        langId:     warnLang.id,
+        langCode:   warnLang.code,
+        langName:   warnLang.name,
+        langNative: warnLang.native,
+      },
+    });
+  }, [warnLang, navigate]);
+
+  // ── Warning modal: cancel ─────────────────────────────────────────────────
+  const handleWarnCancel = useCallback(() => {
+    setShowWarning(false);
+    setWarnLang(null);
+  }, []);
 
   // ── Toggle active ─────────────────────────────────────────────────────────
   const handleToggleActive = useCallback(async (lang: Language) => {
@@ -277,7 +308,7 @@ export default function LanguageTranslationTab() {
             } catch (e) {
               if (isNoApiKey(e)) {
                 abortRef.current = true;
-                addToast(t('lt_translation_aborted', 'Translation stopped — Kimi API key not configured.'), 'error');
+                addToast(t('lt_translation_aborted', 'Translation stopped \u2014 Kimi API key not configured.'), 'error');
                 updateRow(row.key, { status: 'error', error: t('lt_no_api_key_msg', 'No Kimi API key configured.') });
                 break;
               }
@@ -298,7 +329,7 @@ export default function LanguageTranslationTab() {
               max_tokens: 4000,
               messages: [{
                 role: 'user',
-                content: `Translate all text values in this JSON from ${sourceLabel} to ${targetLabel}. Keep JSON structure and keys identical. Only translate text values — do not translate IDs, status values (Planned, In Progress, Completed, Delayed, On Hold), dates, or technical identifiers. Return ONLY valid JSON, no explanation, no markdown.\n${JSON.stringify(content)}`,
+                content: `Translate all text values in this JSON from ${sourceLabel} to ${targetLabel}. Keep JSON structure and keys identical. Only translate text values \u2014 do not translate IDs, status values (Planned, In Progress, Completed, Delayed, On Hold), dates, or technical identifiers. Return ONLY valid JSON, no explanation, no markdown.\n${JSON.stringify(content)}`,
               }],
             });
 
@@ -315,7 +346,7 @@ export default function LanguageTranslationTab() {
       } catch (e) {
         if (isNoApiKey(e)) {
           abortRef.current = true;
-          addToast(t('lt_translation_aborted', 'Translation stopped — Kimi API key not configured.'), 'error');
+          addToast(t('lt_translation_aborted', 'Translation stopped \u2014 Kimi API key not configured.'), 'error');
           updateRow(row.key, { status: 'error', error: t('lt_no_api_key_msg', 'No Kimi API key configured.') });
           break;
         }
@@ -339,7 +370,7 @@ export default function LanguageTranslationTab() {
   const handleStop = () => { abortRef.current = true; };
 
   if (loading) {
-    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, fontSize: 13, color: 'var(--text-muted)' }}>{t('lt_loading', 'Loading…')}</div>;
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, fontSize: 13, color: 'var(--text-muted)' }}>{t('lt_loading', 'Loading\u2026')}</div>;
   }
 
   const defaultLangObj = allLanguages.find(l => l.code === defaultLang);
@@ -347,6 +378,65 @@ export default function LanguageTranslationTab() {
 
   return (
     <div>
+
+      {/* ── WARNING MODAL ─────────────────────────────────────────────────── */}
+      {showWarning && warnLang && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 24,
+        }}>
+          <div style={{
+            background: 'var(--bg-elevated)',
+            border: '1px solid rgba(248,81,73,0.5)',
+            borderRadius: 'var(--radius)',
+            padding: '28px 32px',
+            maxWidth: 480, width: '100%',
+            boxShadow: 'var(--shadow-lg)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                background: 'rgba(248,81,73,0.12)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 16, fontWeight: 800, color: 'var(--red)',
+              }}>
+                !
+              </div>
+              <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--red)', margin: 0 }}>
+                {t('change_lang_warning_title', 'This will delete all data')}
+              </h2>
+            </div>
+
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: 24 }}>
+              {t('change_lang_warning_desc', 'Changing the default language on a live system requires a factory reset. ALL team content, files, locale content, and configuration will be permanently deleted. Only superadmin users are preserved.')}
+            </p>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={handleWarnProceed}
+                style={{
+                  padding: '10px 18px', borderRadius: 'var(--radius-sm)', border: 'none',
+                  background: 'var(--red)', color: 'white',
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer', flex: 1,
+                }}>
+                {t('change_lang_warning_proceed', 'I understand \u2014 proceed')}
+              </button>
+              <button
+                onClick={handleWarnCancel}
+                style={{
+                  padding: '10px 18px', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)', background: 'none',
+                  color: 'var(--text-secondary)',
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}>
+                {t('btn_cancel', 'Cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 1. DEFAULT LANGUAGE ────────────────────────────────────────────── */}
       <div style={cardSt}>
@@ -362,7 +452,7 @@ export default function LanguageTranslationTab() {
                   {defaultLangObj.nameNative} ({defaultLangObj.name})
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {defaultLangObj.code.toUpperCase()} {defaultLangObj.isRtl ? `· ${t('lt_rtl', 'RTL')}` : ''}
+                  {defaultLangObj.code.toUpperCase()} {defaultLangObj.isRtl ? `\u00b7 ${t('lt_rtl', 'RTL')}` : ''}
                 </div>
               </div>
               <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid rgba(99,102,241,0.3)' }}>
@@ -370,7 +460,7 @@ export default function LanguageTranslationTab() {
               </span>
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{t('lt_loading', 'Loading…')}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{t('lt_loading', 'Loading\u2026')}</div>
           )}
         </div>
       </div>
@@ -435,13 +525,13 @@ export default function LanguageTranslationTab() {
                 onChange={e => handleLookupSelect(e.target.value)}
                 style={selectSt}
               >
-                <option value="">{t('lt_select_language', 'Select a language…')}</option>
+                <option value="">{t('lt_select_language', 'Select a language\u2026')}</option>
                 {Object.entries(LANG_LOOKUP)
                   .filter(([code]) => !allLanguages.some(l => l.code === code))
                   .sort(([, a], [, b]) => a.name.localeCompare(b.name))
                   .map(([code, entry]) => (
                     <option key={code} value={code}>
-                      {entry.name} — {entry.nameNative}
+                      {entry.name} \u2014 {entry.nameNative}
                     </option>
                   ))}
                 <option value="__custom__">{t('lt_custom_language', 'Other / Custom (enter manually)')}</option>
@@ -476,7 +566,7 @@ export default function LanguageTranslationTab() {
                     <input
                       value={newNative}
                       onChange={e => setNewNative(e.target.value)}
-                      placeholder="Français"
+                      placeholder="Fran\u00e7ais"
                       style={{ ...inputSt, background: selectedLookupKey !== '__custom__' ? 'rgba(5,150,105,0.06)' : 'var(--bg-input)' }}
                     />
                   </div>
@@ -522,7 +612,7 @@ export default function LanguageTranslationTab() {
           <div>
             <label style={labelSt}>{t('lt_target_lang', 'Target Language')}</label>
             <select value={targetCode} onChange={e => { setTargetCode(e.target.value); setRows([]); }} style={selectSt}>
-              <option value="">{t('lt_translate_to', 'Translate to')}…</option>
+              <option value="">{t('lt_translate_to', 'Translate to')}\u2026</option>
               {allLanguages.filter(l => l.code !== defaultLang && l.isActive).map(l => (
                 <option key={l.id} value={l.code}>{l.nameNative} ({l.code.toUpperCase()})</option>
               ))}
@@ -534,7 +624,7 @@ export default function LanguageTranslationTab() {
         {targetCode && !running && rows.length === 0 && (
           <button onClick={handlePreflight}
             style={{ padding: '9px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--blue)', background: 'none', color: 'var(--blue)', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 14 }}>
-            {t('lt_preflight', 'Pre-flight check…')}
+            {t('lt_preflight', 'Pre-flight check\u2026')}
           </button>
         )}
 
@@ -591,7 +681,7 @@ export default function LanguageTranslationTab() {
             {(running || progress > 0) && (
               <div style={{ marginBottom: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
-                  <span>{running ? t('lt_translating_status', 'Translating…') : t('lt_complete', 'Translation complete')}</span>
+                  <span>{running ? t('lt_translating_status', 'Translating\u2026') : t('lt_complete', 'Translation complete')}</span>
                   <span>{progress}%</span>
                 </div>
                 <div style={{ height: 4, background: 'var(--bg-overlay)', borderRadius: 2, overflow: 'hidden' }}>
