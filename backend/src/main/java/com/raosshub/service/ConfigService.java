@@ -149,10 +149,14 @@ public class ConfigService {
         ndaAgreementRepository.deleteAll();
         passwordResetTokenRepository.deleteAll();
 
-        // Users: keep only superadmins
+        // Users: keep superadmins AND recovery accounts
+        // Role is stored as "superadmin" (lowercase, no ROLE_ prefix) — must match exactly.
+        // Recovery accounts are superadmins so the role check already protects them,
+        // but we also check is_recovery explicitly as defence-in-depth.
         userRepository.deleteAll(
             userRepository.findAll().stream()
-                .filter(u -> !"ROLE_SUPERADMIN".equals(u.getRole()))
+                .filter(u -> !"superadmin".equalsIgnoreCase(u.getRole())
+                          && !Boolean.TRUE.equals(u.getIsRecovery()))
                 .collect(Collectors.toList())
         );
 

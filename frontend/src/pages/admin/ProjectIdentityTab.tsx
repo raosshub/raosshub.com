@@ -342,19 +342,19 @@ const ProjectIdentityTab = React.forwardRef<ProjectIdentityTabHandle, Props>(
           <Field label={t('tab1_project_name', 'Project Name') + ' *'}>
             <input type="text" value={form.projectName}
               onChange={e => updateField('projectName', e.target.value)}
-              placeholder="e.g. Smart Home Hub Pro" style={inputSt} />
+              placeholder={t('tab1_project_name_ph', 'e.g. My Product Name')} style={inputSt} />
           </Field>
 
           <Field label={t('tab1_product_code', 'Product Code / SKU')}>
             <input type="text" value={form.productCode}
               onChange={e => updateField('productCode', e.target.value)}
-              placeholder="e.g. RSH-2024-001" style={inputSt} />
+              placeholder={t('tab1_product_code_ph', 'e.g. PRD-2024-001')} style={inputSt} />
           </Field>
 
           <Field label={t('tab1_company_name', 'Company Name') + ' *'}>
             <input type="text" value={form.companyName}
               onChange={e => updateField('companyName', e.target.value)}
-              placeholder="e.g. your company name" style={inputSt} />
+              placeholder={t('tab1_company_name_ph', 'e.g. Your Company Name')} style={inputSt} />
           </Field>
 
           <Field label={t('tab1_status', 'Status')}>
@@ -375,7 +375,7 @@ const ProjectIdentityTab = React.forwardRef<ProjectIdentityTabHandle, Props>(
           <Field label={t('tab1_site_title', 'Site Name (Browser Tab Title)')}>
             <input type="text" value={form.siteTitle}
               onChange={e => updateField('siteTitle', e.target.value)}
-              placeholder={form.projectName || 'My product name'}
+              placeholder={form.projectName || t('tab1_site_title_ph', 'e.g. My Product Name')}
               style={inputSt} />
             <div style={hintSt}>{t('tab1_site_title_hint', 'Sets the browser tab title. If empty, Project Name is used.')}</div>
           </Field>
@@ -383,7 +383,7 @@ const ProjectIdentityTab = React.forwardRef<ProjectIdentityTabHandle, Props>(
           <Field label={t('tab1_description', 'Description')}>
             <textarea value={form.description}
               onChange={e => updateField('description', e.target.value)}
-              placeholder="Brief product description..." style={textareaSt} rows={4} />
+              placeholder={t('tab1_description_ph', 'Brief product description...')} style={textareaSt} rows={4} />
           </Field>
         </div>
 
@@ -512,19 +512,19 @@ const ProjectIdentityTab = React.forwardRef<ProjectIdentityTabHandle, Props>(
           <Field label={t('tab1_contact_email', 'Contact Email')}>
             <input type="email" value={form.contactEmail}
               onChange={e => updateField('contactEmail', e.target.value)}
-              placeholder="contact@company.com" style={inputSt} />
+              placeholder={t('tab1_contact_email_ph', 'contact@company.com')} style={inputSt} />
           </Field>
 
           <Field label={t('tab1_website_url', 'Website URL')}>
             <input type="text" value={form.websiteUrl}
               onChange={e => updateField('websiteUrl', e.target.value)}
-              placeholder="https://www.company.com" style={inputSt} />
+              placeholder={t('tab1_website_url_ph', 'https://www.company.com')} style={inputSt} />
           </Field>
 
           <Field label={t('tab1_ref_links', 'Reference Links')}>
             <textarea value={form.referenceLinks}
               onChange={e => updateField('referenceLinks', e.target.value)}
-              placeholder="One URL per line..." style={textareaSt} rows={4} />
+              placeholder={t('tab1_ref_links_ph', 'One URL per line...')} style={textareaSt} rows={4} />
             <div style={hintSt}>{t('tab1_ref_links_hint', 'Admin only — one URL per line')}</div>
           </Field>
         </div>
@@ -537,33 +537,33 @@ const ProjectIdentityTab = React.forwardRef<ProjectIdentityTabHandle, Props>(
             <Field label={t('tab1_icp_zh', 'ICP — Chinese')}>
               <input type="text" value={form.icpZh}
                 onChange={e => updateField('icpZh', e.target.value)}
-                placeholder="粤ICP备2025454823号" style={inputSt} />
+                placeholder={t('tab1_icp_zh_ph', '\u7ca4ICP\u590700000000\u53f7')} style={inputSt} />
               <div style={hintSt}>{t('tab1_icp_zh_hint', 'Shown when Chinese language is selected')}</div>
             </Field>
 
             <Field label={t('tab1_icp_en', 'ICP — English')}>
               <input type="text" value={form.icpEn}
                 onChange={e => updateField('icpEn', e.target.value)}
-                placeholder="Guangdong ICP Record No. 2025454823" style={inputSt} />
+                placeholder={t('tab1_icp_en_ph', 'Guangdong ICP Record No. 2025454823')} style={inputSt} />
               <div style={hintSt}>{t('tab1_icp_en_hint', 'Shown for all other languages')}</div>
             </Field>
 
             <Field label={t('tab1_patent', 'Patent Notice')}>
               <input type="text" value={form.patentNotice}
                 onChange={e => updateField('patentNotice', e.target.value)}
-                placeholder="Protected by patents: US10,123,456 B2" style={inputSt} />
+                placeholder={t('tab1_patent_ph', 'e.g. Protected by patents: US10,123,456 B2')} style={inputSt} />
             </Field>
 
             <Field label={t('tab1_trademark', 'Trademark Notice')}>
               <input type="text" value={form.trademarkNotice}
                 onChange={e => updateField('trademarkNotice', e.target.value)}
-                placeholder="Company Name™ is a trademark of..." style={inputSt} />
+                placeholder={t('tab1_trademark_ph', 'e.g. Company Name™ is a trademark of...')} style={inputSt} />
             </Field>
 
             <Field label={t('tab1_copyright', 'Copyright Notice')}>
               <input type="text" value={form.copyrightNotice}
                 onChange={e => updateField('copyrightNotice', e.target.value)}
-                placeholder="© 2024 Company Name. All rights reserved." style={inputSt} />
+                placeholder={t('tab1_copyright_ph', 'e.g. © 2024 Company Name. All rights reserved.')} style={inputSt} />
             </Field>
           </div>
         </div>
