@@ -52,4 +52,13 @@ public class User {
 
     @Column(name = "last_login")
     private Instant lastLogin;
+
+    // Recovery account — never deleted by factory reset.
+    // Created once by DataInitializer with unique random credentials.
+    // Admin uses these credentials if locked out of the system.
+    @Column(name = "is_recovery")
+    private Boolean isRecovery = false;
+
+    @Column(name = "recovery_email", length = 255)
+    private String recoveryEmail;
 }

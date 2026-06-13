@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore }            from '@/stores/useAuthStore';
 import { useI18nStore }            from '@/stores/useI18nStore';
@@ -6,7 +6,9 @@ import { useThemeStore }           from '@/stores/useThemeStore';
 import { useConfigStore }          from '@/stores/useConfigStore';
 import { useNotificationStore }    from '@/stores/useNotificationStore';
 import { teamApi }                 from '@/utils/api';
-import type { Team, User }         from '@/types';
+import { useUIStore }              from '@/stores/useUIStore';
+import HubAssistPage              from '@/pages/HubAssistPage';
+import type { Team, User }        from '@/types';
 import { Icons }                   from '@/components/icons';
 import { STATUS_OPTIONS, getStatusLabel } from '@/types';
 
@@ -27,6 +29,18 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate  = useNavigate();
   const location  = useLocation();
   const { user, logout }                          = useAuthStore();
+
+  // Guards all sidebar navigation — shows confirm when Tab 2 translation is running.
+  // Reads from useUIStore (not React state) to avoid re-render overhead.
+  const guardedNavigate = useCallback((path: string) => {
+    if (useUIStore.getState().translationRunning) {
+      const ok = window.confirm(
+        'Translation is in progress.\n\nNavigating away will stop the translation. Continue?'
+      );
+      if (!ok) return;
+    }
+    navigate(path);
+  }, [navigate]);
   const { t, currentLang, setLanguage, languages } = useI18nStore();
   const { theme, toggleTheme, sidebarCollapsed, toggleSidebar } = useThemeStore();
   const { identity, notifications, loaded, load, getBreadcrumb } = useConfigStore();
@@ -34,6 +48,8 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [teams, setTeams]             = React.useState<Team[]>([]);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [trayOpen, setTrayOpen]       = React.useState(false);
+  // Right sidebar: collapsed by default (56px), expanded (360px). Always mounted.
+  const [assistCollapsed, setAssistCollapsed] = React.useState(true);
   const bellRef                       = React.useRef<HTMLDivElement>(null);
 
   const { notifications: notifItems, markAllRead, dismissNotification, clearAll } = useNotificationStore();
@@ -75,7 +91,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }, [load]);
 
   const currentPath = location.pathname;
-  const breadcrumb  = getBreadcrumb(currentPath);
+  const breadcrumb  = getBreadcrumb(currentPath, t);
   const statusText  = identity.status ? getStatusLabel(identity.status, currentLang) : '';
   const statusColor = STATUS_COLORS[identity.status] || identity.primaryColor || 'var(--accent)';
   const icpLine     = isZh ? identity.icpZh : identity.icpEn;
@@ -105,7 +121,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const active   = currentPath === path || (path !== '/' && currentPath.startsWith(path));
     const IconComp = Icons[icon];
     return (
-      <button onClick={() => navigate(path)} title={sidebarCollapsed ? label : undefined}
+      <button onClick={() => guardedNavigate(path)} title={sidebarCollapsed ? label : undefined}
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '9px 6px' : '8px 10px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', background: active ? 'var(--bg-active)' : 'transparent', color: active ? 'var(--text-primary)' : 'var(--text-secondary)', justifyContent: sidebarCollapsed ? 'center' : 'flex-start', transition: 'all var(--transition)' }}>
         <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', color: active ? 'var(--accent)' : 'inherit' }}>
           {IconComp && <IconComp size={16} />}
@@ -126,14 +142,33 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     );
   }
 
+  // Shared section style — used by left sidebar blocks and right sidebar body
+  const secSt: React.CSSProperties = {
+    background:   'var(--sidebar-bg)',
+    border:       '1px solid var(--sidebar-border)',
+    borderRadius: 'var(--radius)',
+    flexShrink:   0,
+  };
+  // Brand-block style — used by Left TB and Right TB
+  const tbSt: React.CSSProperties = {
+    background:   'var(--bg-base)',
+    border:       '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    height:       56,
+    flexShrink:   0,
+    display:      'flex',
+    alignItems:   'center',
+    overflow:     'hidden',
+  };
+
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg-base)', padding: 10, gap: 10, boxSizing: 'border-box' }}>
 
-      {/* ─── SIDEBAR ──────────────────────────────────────────────────────── */}
+      {/* ─── LEFT SIDEBAR ─────────────────────────────────────────────────── */}
       <aside style={{ width: sidebarCollapsed ? 56 : 248, display: 'flex', flexDirection: 'column', flexShrink: 0, gap: 10, transition: 'width 0.25s ease', overflow: 'hidden' }}>
 
-        {/* Brand block */}
-        <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', flexShrink: 0, minHeight: 56, display: 'flex', alignItems: 'center', padding: sidebarCollapsed ? '0 6px' : '0 14px', overflow: 'hidden', justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}>
+        {/* Left TB — brand block, same style as Right TB */}
+        <div style={{ ...tbSt, padding: sidebarCollapsed ? '0 6px' : '0 14px', justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}>
           <div style={{ width: 40, height: 40, borderRadius: 10, overflow: 'hidden', background: identity.logoUrl ? 'transparent' : 'var(--bg-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', fontWeight: 700, fontSize: 16, flexShrink: 0, border: identity.logoUrl ? 'none' : '1px dashed var(--border)' }}>
             {identity.logoUrl
               ? <img src={identity.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
@@ -142,7 +177,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           {!sidebarCollapsed && (
             <div style={{ marginLeft: 11, overflow: 'hidden' }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 }}>
-                {identity.projectName || 'RAOSS Hub'}
+                {identity.projectName || 'The HUB'}
               </div>
               {identity.productCode && (
                 <div style={{ fontSize: 10, color: identity.primaryColor || 'var(--accent)', fontWeight: 600, letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
@@ -153,9 +188,9 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           )}
         </div>
 
-        {/* Nav block */}
-        <div style={{ flex: 1, background: 'var(--sidebar-bg)', border: '1px solid var(--sidebar-border)', borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 8px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+        {/* Section 1 — hamburger + search */}
+        <div style={{ ...secSt, padding: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <button onClick={toggleSidebar} style={{ width: 28, height: 28, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }} title={sidebarCollapsed ? 'Expand' : 'Collapse'}>
               <Icons.menu size={16} />
             </button>
@@ -166,40 +201,37 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               </div>
             )}
           </div>
-
-          <div style={{ flex: 1, overflowY: 'auto', padding: 6 }}>
-            {filteredMain.map((item) => <NavItem key={item.id} {...item} />)}
-            {teamNavItems.length > 0 && (
-              <>
-                {!sidebarCollapsed && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.5px', textTransform: 'uppercase', padding: '10px 10px 4px' }}>{t('nav_teams_group') || 'Teams'}</div>}
-                {teamNavItems.map((item) => <NavItem key={item.id} {...item} />)}
-              </>
-            )}
-          </div>
-
-          <div style={{ borderTop: '1px solid var(--border-subtle)', padding: 6, flexShrink: 0 }}>
-            <UtilButton icon="sun" label={theme === 'dark' ? (t('tool_theme_light') || 'Light Mode') : (t('tool_theme_dark') || 'Dark Mode')} onClick={toggleTheme} />
-            {isSuperAdmin && <UtilButton icon="robot"    label={t('tool_hub_assist') || 'HUB Assist'}   onClick={() => navigate('/assistant')}    accent  active={currentPath === '/assistant'} />}
-            {isAdmin      && <UtilButton icon="clock"    label={t('tool_activity_log') || 'Activity Log'} onClick={() => navigate('/activity-log')}  active={currentPath === '/activity-log'} />}
-            {isSuperAdmin && <UtilButton icon="shield"   label={t('tool_admin_setup') || 'Admin Setup'}       onClick={() => navigate('/admin/setup')}   active={currentPath.startsWith('/admin')} />}
-            <UtilButton icon="settings" label={t('nav_settings') || 'Settings'} onClick={() => navigate('/settings')} active={currentPath === '/settings'} />
-            <UtilButton icon="logOut"   label={t('tool_sign_out') || 'Sign Out'} onClick={logout} danger />
-          </div>
         </div>
 
-        {/* Footer — Line 1: Document Version (gated by Tab 6 showVersion toggle) */}
-        {!sidebarCollapsed && notifications?.showVersion !== false && identity.version && (
-          <div style={{ background: 'var(--sidebar-bg)', border: '1px solid var(--sidebar-border)', borderRadius: 'var(--radius)', padding: '8px 14px', flexShrink: 0 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', opacity: 0.9 }}>
-              {t('version_prefix', 'Document Version')} {identity.version}
-            </div>
-          </div>
-        )}
+        {/* Section 2 — Overview + teams nav */}
+        <div style={{ ...secSt, flex: 1, overflowY: 'auto', padding: 6, minHeight: 0 }}>
+          {filteredMain.map((item) => <NavItem key={item.id} {...item} />)}
+          {teamNavItems.length > 0 && (
+            <>
+              {!sidebarCollapsed && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.5px', textTransform: 'uppercase', padding: '10px 10px 4px' }}>{t('nav_teams_group') || 'Teams'}</div>}
+              {teamNavItems.map((item) => <NavItem key={item.id} {...item} />)}
+            </>
+          )}
+        </div>
 
-        {/* Footer — Lines 2-5: IP notices */}
-        {!sidebarCollapsed && (identity.icpZh || identity.icpEn || identity.patentNotice || identity.trademarkNotice || identity.copyrightNotice || identity.companyName) && (
-          <div style={{ background: 'var(--sidebar-bg)', border: '1px solid var(--sidebar-border)', borderRadius: 'var(--radius)', padding: '10px 14px', flexShrink: 0 }}>
-            {icpLine           && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2, opacity: 0.8 }}>{icpLine}</div>}
+        {/* Section 3 — tools: theme · activity log · admin · settings · sign out */}
+        <div style={{ ...secSt, padding: 6 }}>
+          <UtilButton icon="sun"      label={theme === 'dark' ? (t('tool_theme_light') || 'Light Mode') : (t('tool_theme_dark') || 'Dark Mode')} onClick={toggleTheme} />
+          {isAdmin      && <UtilButton icon="clock"    label={t('tool_activity_log') || 'Activity Log'} onClick={() => guardedNavigate('/activity-log')} active={currentPath === '/activity-log'} />}
+          {isSuperAdmin && <UtilButton icon="shield"   label={t('nav_admin_setup', 'Admin Setup')}       onClick={() => guardedNavigate('/admin/setup')}  active={currentPath.startsWith('/admin')} />}
+          <UtilButton   icon="settings" label={t('nav_settings') || 'Settings'}   onClick={() => guardedNavigate('/settings')} active={currentPath === '/settings'} />
+          <UtilButton   icon="logout"   label={t('tool_sign_out') || 'Sign Out'}   onClick={logout} danger />
+        </div>
+
+        {/* Section 4 — footer: 5 project info lines from Tab 1 */}
+        {!sidebarCollapsed && (identity.version || icpLine || identity.patentNotice || identity.trademarkNotice || identity.copyrightNotice || identity.companyName) && (
+          <div style={{ ...secSt, padding: '10px 14px' }}>
+            {notifications?.showVersion !== false && identity.version && (
+              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 2, opacity: 0.9 }}>
+                {t('version_prefix', 'Document Version')} {identity.version}
+              </div>
+            )}
+            {icpLine                  && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2, opacity: 0.8 }}>{icpLine}</div>}
             {identity.patentNotice    && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2, opacity: 0.8 }}>{identity.patentNotice}</div>}
             {identity.trademarkNotice && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2, opacity: 0.8 }}>{identity.trademarkNotice}</div>}
             {(identity.copyrightNotice || identity.companyName) && (
@@ -209,9 +241,10 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             )}
           </div>
         )}
+
       </aside>
 
-      {/* ─── MAIN ─────────────────────────────────────────────────────────── */}
+      {/* ─── MAIN COLUMN ──────────────────────────────────────────────────── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, gap: 10 }}>
 
         {/* Topbar */}
@@ -252,11 +285,6 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 ))}
               </select>
             )}
-
-            {/* Theme toggle */}
-            <button onClick={toggleTheme} style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}>
-              {theme === 'dark' ? <Icons.sun size={16} /> : <Icons.moon size={16} />}
-            </button>
 
             {/* Notification bell + tray */}
             <div ref={bellRef} style={{ position: 'relative' }}>
@@ -320,7 +348,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             {/* User */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>
-                {(user as User)?.firstName || (user as User)?.username}
+                {(user as User)?.username}
               </span>
               <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
                 {userInitial}
@@ -330,12 +358,53 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </header>
 
         {/* Page content */}
-        <div style={{ flex: 1, overflow: 'auto', borderRadius: 'var(--radius)', background: 'var(--bg-base)' }}>
+        <div style={{ flex: 1, overflow: 'auto', borderRadius: 'var(--radius)', background: 'var(--bg-base)', minHeight: 0 }}>
           <div style={{ padding: '20px 24px', minHeight: '100%' }}>
             {children}
           </div>
         </div>
+
       </div>
+
+      {/* ─── RIGHT SIDEBAR (superadmin only, always mounted) ──────────────── */}
+      {isSuperAdmin && (
+        <div style={{ width: assistCollapsed ? 56 : 360, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, transition: 'width 0.25s ease', overflow: 'hidden' }}>
+
+          {/* Right TB — mirrors Left TB brand block exactly */}
+          <div
+            style={{ ...tbSt, justifyContent: assistCollapsed ? 'center' : 'space-between', padding: assistCollapsed ? '0 6px' : '0 14px', cursor: assistCollapsed ? 'pointer' : 'default' }}
+            onClick={assistCollapsed ? () => setAssistCollapsed(false) : undefined}
+            title={assistCollapsed ? t('nav_hub_assist', 'HUB Assist') : undefined}
+          >
+            {assistCollapsed ? (
+              <Icons.robot size={16} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+            ) : (
+              <>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {t('nav_hub_assist', 'HUB Assist')}
+                </span>
+                <button
+                  onClick={() => setAssistCollapsed(true)}
+                  title="Collapse"
+                  style={{ width: 28, height: 28, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}
+                >
+                  <Icons.robot size={16} />
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Right body — same style as left sidebar sections, always mounted */}
+          <div style={{ ...secSt, flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            {/* HubAssistPage hidden via display:none when collapsed — preserves all state */}
+            <div style={{ display: assistCollapsed ? 'none' : 'flex', flexDirection: 'column', height: '100%' }}>
+              <HubAssistPage panelMode onClose={() => setAssistCollapsed(true)} />
+            </div>
+          </div>
+
+        </div>
+      )}
+
     </div>
   );
 };

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation }  from 'react-router-dom';
+import { useAuthStore }              from '@/stores/useAuthStore';
 import { useI18nStore }              from '@/stores/useI18nStore';
 import { useNotificationStore }      from '@/stores/useNotificationStore';
 import { configApi, teamApi, languageApi, i18nApi, adminApi, kimiApi } from '@/utils/api';
@@ -68,10 +69,23 @@ const infoBoxSt: React.CSSProperties = { padding: '10px 14px', borderRadius: 'va
 export default function ChangeDefaultLanguagePage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { logout }                        = useAuthStore();
   const { t, defaultLang, loadLanguages } = useI18nStore();
   const { addToast } = useNotificationStore();
 
-  const ls = location.state as LocationState | null;
+  // Primary: React Router state. Fallback: sessionStorage (handles StrictMode
+  // double-mount where location.state is null on the second mount).
+  const ls: LocationState | null = (() => {
+    if ((location.state as any)?.langId) return location.state as LocationState;
+    try {
+      const raw = sessionStorage.getItem('hub_cdl_state');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.langId) return parsed as LocationState;
+      }
+    } catch {}
+    return null;
+  })();
 
   useEffect(() => { if (!ls?.langId) navigate('/admin/setup'); }, [ls, navigate]);
 
@@ -194,18 +208,128 @@ export default function ChangeDefaultLanguagePage() {
   useEffect(() => { if (step === 5) runVerify(); }, [step, runVerify]);
 
   // ── Step 6 — Set Default ──────────────────────────────────────────────────
-  const [s6Running, setS6Running] = useState(false);
-  const [s6Done,    setS6Done]    = useState(false);
+  const [s6Running,   setS6Running]   = useState(false);
+  const [s6Done,      setS6Done]      = useState(false);
+  // 'confirm' → user sees the confirm button
+  // 'translating' → phase 2 auto-translation running
+  // 'done' → all complete
+  const [s6Phase,     setS6Phase]     = useState<'confirm' | 'translating' | 'done'>('confirm');
+  const [s6Progress,  setS6Progress]  = useState({ done: 0, total: 0 });
+  const [s6TransWarn, setS6TransWarn] = useState(''); // Option B: warn but never block
 
   const handleSetDefault = useCallback(async () => {
     if (s6Running || !ls) return;
     setS6Running(true);
+
+    // ── Phase 1: set default language + save Kimi key ─────────────────────
     try {
       await languageApi.setDefault(ls.langId);
       if (kimiKey.trim()) await configApi.save({ integrations: { kimiApiKey: kimiKey.trim() } });
-      await loadLanguages(); clearWizardState(); setS6Done(true);
+      await loadLanguages();
+      clearWizardState();
       addToast(t('change_lang_s6_done', 'Default language updated'), 'success');
-    } catch (e: any) { addToast(t('lt_error', 'Error') + ': ' + (e?.message || ''), 'error'); setS6Running(false); }
+    } catch (e: any) {
+      addToast(t('lt_error', 'Error') + ': ' + (e?.message || ''), 'error');
+      setS6Running(false);
+      return;
+    }
+
+    // ── Phase 2: auto-translate EN → new default language ─────────────────
+    // Only runs when a Kimi key is configured and the new default is not EN.
+    // Option B: any failure shows a warning but never traps the user here.
+    if (kimiKey.trim() && ls.langCode.toLowerCase() !== 'en') {
+      setS6Phase('translating');
+      const BATCH = 20;
+      let failedCount = 0;
+      try {
+        const strRes  = await i18nApi.getUiStrings('en');
+        const enStr: Record<string, string> = strRes.data?.data || {};
+        const allKeys = Object.keys(enStr);
+        setS6Progress({ done: 0, total: allKeys.length });
+
+        for (let i = 0; i < allKeys.length; i += BATCH) {
+          const batchKeys = allKeys.slice(i, i + BATCH);
+          const batchObj: Record<string, string> = {};
+          batchKeys.forEach(k => { batchObj[k] = enStr[k]; });
+
+          // Auto-retry up to 3 attempts per batch — handles transient Kimi
+          // rate limits and occasional malformed JSON responses.
+          let batchDone = false;
+          for (let attempt = 1; attempt <= 3 && !batchDone; attempt++) {
+            try {
+              if (attempt > 1) {
+                // Exponential backoff: 1s, 2s between retries
+                await new Promise(r => setTimeout(r, attempt * 1000));
+              }
+              const prompt = [
+                `Translate these UI strings from English to ${ls.langNative} (${ls.langCode}).`,
+                `Return ONLY a valid JSON object with the same keys. No explanation, no markdown.`,
+                `Keep placeholders like {name}, {n}, {lang} unchanged.`,
+                '',
+                JSON.stringify(batchObj, null, 2),
+              ].join('\n');
+              const kr  = await kimiApi.chat({ model: 'moonshot-v1-8k', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] });
+              const raw   = kr.data?.choices?.[0]?.message?.content || '';
+              const start = raw.indexOf('{');
+              const end   = raw.lastIndexOf('}');
+              if (start === -1 || end === -1) throw new Error('no JSON in Kimi response');
+              const translated: Record<string, string> = JSON.parse(raw.slice(start, end + 1));
+              for (const key of batchKeys) {
+                const val = translated[key];
+                if (typeof val === 'string' && val.trim()) {
+                  await i18nApi.saveUiString(key, ls.langCode, val);
+                }
+              }
+              batchDone = true;
+            } catch { /* retry */ }
+          }
+          if (!batchDone) failedCount += batchKeys.length;
+          setS6Progress(p => ({ ...p, done: Math.min(p.done + batchKeys.length, allKeys.length) }));
+        }
+      } catch { failedCount = -1; }
+
+      // Option B — set warning but always proceed to done
+      if (failedCount === -1) {
+        setS6TransWarn(t('change_lang_s6_trans_fail', 'Translation could not start. Go to Language & Translation to translate later.'));
+      } else if (failedCount > 0) {
+        setS6TransWarn(
+          t('change_lang_s6_trans_warn', 'Translation incomplete — {n} strings failed. Re-run from Language & Translation tab.')
+            .replace('{n}', String(failedCount))
+        );
+      }
+
+      // Translate Site Agreement text to the new default language.
+      // Non-critical: if it fails, NDAModal falls back to text_en (English).
+      try {
+        const cfgRes     = await configApi.get();
+        const currentNda = ((cfgRes.data?.data?.nda as Record<string, unknown>) || {});
+        const ndaEn      = (currentNda.text_en as string || '').trim();
+        if (ndaEn && ls.langCode.toLowerCase() !== 'en') {
+          const kr = await kimiApi.chat({
+            model:      'moonshot-v1-32k',
+            max_tokens: 3000,
+            messages:   [{ role: 'user', content:
+              `Translate this Site Agreement from English to ${ls.langNative}. ` +
+              `Preserve all Markdown formatting (# headings, **bold**, - bullets). ` +
+              `Return ONLY the translated text, no explanation.\n\n${ndaEn}`,
+            }],
+          });
+          const translatedNda = (kr.data?.choices?.[0]?.message?.content || '').trim();
+          if (translatedNda) {
+            // Spread existing nda to preserve text_en, title, showMode — not just add translation key
+            await configApi.save({ nda: { ...currentNda, [`text_${ls.langCode}`]: translatedNda } });
+          }
+        }
+      } catch { /* non-critical — NDA shows in English as fallback */ }
+
+    } else if (!kimiKey.trim()) {
+      // No Kimi key — skip and show note
+      setS6TransWarn(t('change_lang_s6_trans_skip', 'No Kimi key configured — translation skipped. Go to Language & Translation to translate later.'));
+    }
+
+    setS6Phase('done');
+    setS6Done(true);
+    setS6Running(false);
   }, [s6Running, ls, kimiKey, loadLanguages, addToast, t]);
 
   if (!ls?.langId) return null;
@@ -227,7 +351,7 @@ export default function ChangeDefaultLanguagePage() {
 
       {/* Back link */}
       <button onClick={() => navigate('/admin/setup')} disabled={isLocked} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 13, padding: '0 0 20px', cursor: isLocked ? 'not-allowed' : 'pointer', opacity: isLocked ? 0.4 : 1 }}>
-        <Icons.arrowLeft size={14} /> {t('change_lang_cancel', 'Back to Language Settings')}
+        {'\u2190'} {t('change_lang_cancel', 'Back to Language Settings')}
       </button>
 
       <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 6 }}>{t('change_lang_page_title', 'Change Default Language')}</h1>
@@ -410,6 +534,8 @@ export default function ChangeDefaultLanguagePage() {
         <div style={cardSt}>
           <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 10 }}>{t('change_lang_s6_title', 'Set New Default Language')}</h2>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: 22 }}>{t('tab_language_desc', 'Confirm the change. After this, author all content in the new default language.')}</p>
+
+          {/* FROM → TO summary — always visible */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 12, alignItems: 'center', marginBottom: 28 }}>
             <div style={{ padding: '16px 18px', background: 'var(--bg-overlay)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
               <div style={{ ...labelSt, marginBottom: 8 }}>{t('change_lang_s6_from', 'Current default')}</div>
@@ -421,17 +547,70 @@ export default function ChangeDefaultLanguagePage() {
               <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{ls.langNative} <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 13 }}>({ls.langCode.toUpperCase()})</span></div>
             </div>
           </div>
-          {!s6Done ? (
+
+          {/* ── Phase: confirm ─────────────────────────────────────────────── */}
+          {s6Phase === 'confirm' && (
             <button onClick={handleSetDefault} disabled={s6Running} style={{ ...primaryBtn(s6Running), display: 'flex', alignItems: 'center', gap: 8 }}>
               {s6Running && <span style={spinnerSt} />}
               {s6Running ? t('lt_translating_item', 'Working\u2026') : `${t('change_lang_s6_btn', 'Confirm \u2014 Set as Default')} (${ls.langNative})`}
             </button>
-          ) : (
+          )}
+
+          {/* ── Phase: translating ─────────────────────────────────────────── */}
+          {s6Phase === 'translating' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#059669', fontSize: 14, fontWeight: 700 }}><span style={{ fontSize: 18 }}>{'\u2713'}</span>{t('change_lang_s6_done', 'Default language updated')}</div>
-              <div style={infoBoxSt}>{t('change_lang_s6_next_steps', 'Next steps: go to Admin Setup > Language & Translation and click Translate All.')}</div>
-              <button onClick={() => navigate('/admin/setup')} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--accent)', background: 'none', color: 'var(--accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: 'fit-content' }}>
-                <Icons.arrowLeft size={14} />{t('change_lang_s6_return', 'Return to Language Settings')}
+              {/* Phase 1 complete */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#059669', fontWeight: 600 }}>
+                <span style={{ fontSize: 15 }}>{'\u2713'}</span>
+                {t('change_lang_s6_phase1', 'Default language set')}
+              </div>
+              {/* Phase 2 in progress */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
+                <span style={spinnerSt} />
+                {t('change_lang_s6_phase2', 'Translating UI strings')} ({s6Progress.done} / {s6Progress.total})
+              </div>
+              {/* Progress bar */}
+              <div style={{ height: 4, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
+                <div style={{ height: '100%', background: 'var(--accent)', borderRadius: 99, transition: 'width 0.4s ease', width: `${s6Progress.total > 0 ? Math.round(s6Progress.done / s6Progress.total * 100) : 0}%` }} />
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {t('lt_do_not_close', 'Do not close this window.')}
+              </div>
+            </div>
+          )}
+
+          {/* ── Phase: done ────────────────────────────────────────────────── */}
+          {s6Phase === 'done' && s6Done && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Phase 1 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#059669', fontSize: 13, fontWeight: 600 }}>
+                <span style={{ fontSize: 15 }}>{'\u2713'}</span>
+                {t('change_lang_s6_done', 'Default language updated')}
+              </div>
+              {/* Phase 2 result */}
+              {s6TransWarn ? (
+                <div style={{ padding: '10px 14px', borderRadius: 'var(--radius-sm)', background: 'rgba(234,179,8,0.06)', border: '1px solid rgba(234,179,8,0.3)', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  {'\u26A0'} {s6TransWarn}
+                </div>
+              ) : ls.langCode.toLowerCase() !== 'en' ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#059669', fontSize: 13, fontWeight: 600 }}>
+                  <span style={{ fontSize: 15 }}>{'\u2713'}</span>
+                  {t('change_lang_s6_trans_done', 'Translation complete')}
+                </div>
+              ) : null}
+              {/* Return */}
+              {/* Logout → login page reinitialises with new default language strings */}
+              <button
+                onClick={() => {
+                  // Clear saved language preference so loadLanguages() uses
+                  // the new default (ZH) instead of the old saved value (EN)
+                  try { localStorage.removeItem('hub_lang'); } catch {}
+                  logout();
+                  navigate('/');
+                }}
+                style={{ padding: '10px 24px', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: 'var(--text-inverse)', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: 'fit-content' }}
+              >
+                {t('change_lang_s6_go_login', 'Sign in to continue')}
               </button>
             </div>
           )}

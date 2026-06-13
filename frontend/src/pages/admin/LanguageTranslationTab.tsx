@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate }              from 'react-router-dom';
+import { useNavigate }                 from 'react-router-dom';
+import { useUIStore }                  from '@/stores/useUIStore';
 import { useI18nStore }             from '@/stores/useI18nStore';
 import { useNotificationStore } from '@/stores/useNotificationStore';
-import { languageApi, i18nApi, kimiApi } from '@/utils/api';
+import { languageApi, i18nApi, kimiApi, configApi } from '@/utils/api';
 import { Icons } from '@/components/icons';
 import type { Language } from '@/types';
 
@@ -101,7 +102,16 @@ const LANG_LOOKUP: Record<string, { name: string; nameNative: string; isRtl: boo
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
-export default function LanguageTranslationTab() {
+interface LanguageTranslationTabProps {
+  tabContext?:                any;
+  onNavigateToIntegrations?:  (ctx: any) => void;
+  onClearContext?:            () => void;
+  /** Called whenever the translation running state changes.
+   *  AdminSetupPage uses this to block tab switches during translation. */
+  onRunningChange?:           (running: boolean) => void;
+}
+
+export default function LanguageTranslationTab({ onRunningChange }: LanguageTranslationTabProps) {
   const { t, languages, currentLang, defaultLang, loadLanguages, loadUiStrings } = useI18nStore();
   const { addToast } = useNotificationStore();
   const navigate     = useNavigate();
@@ -129,6 +139,20 @@ export default function LanguageTranslationTab() {
   const updateRow = useCallback((key: string, patch: Partial<TranslationRow>) =>
     setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r)),
   []);
+
+  // ── Notify parent + update global store when running state changes ──────────
+  // AdminSetupPage uses onRunningChange to block in-page tab switches.
+  // AppLayout reads useUIStore to block sidebar navigation.
+  useEffect(() => {
+    onRunningChange?.(running);
+    useUIStore.getState().setTranslationRunning(running);
+  }, [running, onRunningChange]);
+
+  // ── Abort translation + clear store when tab unmounts ────────────────────
+  useEffect(() => () => {
+    abortRef.current = true;
+    useUIStore.getState().setTranslationRunning(false);
+  }, []);
 
   // ── Load all languages ────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
@@ -163,6 +187,16 @@ export default function LanguageTranslationTab() {
   const handleWarnProceed = useCallback(() => {
     if (!warnLang) return;
     setShowWarning(false);
+    // Write to sessionStorage as fallback — React Router state can be lost on
+    // StrictMode double-mount. ChangeDefaultLanguagePage reads this if state is null.
+    try {
+      sessionStorage.setItem('hub_cdl_state', JSON.stringify({
+        langId:     warnLang.id,
+        langCode:   warnLang.code,
+        langName:   warnLang.name,
+        langNative: warnLang.native,
+      }));
+    } catch {}
     navigate('/admin/change-default-language', {
       state: {
         langId:     warnLang.id,
@@ -218,29 +252,38 @@ export default function LanguageTranslationTab() {
     }
   }, []);
 
-  // ── Pre-flight check ──────────────────────────────────────────────────────
-  // Uses defaultLang as source — not hardcoded 'en'.
+  // UI strings: always from EN (DataInitializer seeds EN — it is the canonical source).
+  // Locale content sections: from defaultLang (content is authored in the default language).
   const handlePreflight = useCallback(async () => {
     if (!targetCode) return;
     setRows([]);
     const newRows: TranslationRow[] = [];
 
-    // UI strings (from default language)
+    // UI strings — always from EN
     try {
-      const uiRes = await i18nApi.getUiStrings(defaultLang);
+      const uiRes = await i18nApi.getUiStrings('en');
       const keys  = Object.keys(uiRes.data.data || {});
       if (keys.length > 0) {
         newRows.push({ key: '__ui_strings__', label: t('lt_ui_strings_label', 'UI Strings') + ` (${keys.length})`, status: 'pending', selected: true });
       }
     } catch {}
 
-    // Locale content sections (from default language)
+    // Locale content sections — from defaultLang (where content was authored)
     try {
       const secRes  = await i18nApi.getSections(defaultLang);
       const sections: string[] = secRes.data.data || [];
       sections.forEach(path => {
         newRows.push({ key: path, label: path, status: 'pending', selected: true });
       });
+    } catch {}
+
+    // Site Agreement (NDA) — always from text_en
+    try {
+      const cfgRes = await configApi.get();
+      const ndaEn  = ((cfgRes.data?.data?.nda as any)?.text_en || '').trim();
+      if (ndaEn) {
+        newRows.push({ key: '__nda__', label: t('lt_nda_label', 'Site Agreement'), status: 'pending', selected: true });
+      }
     } catch {}
 
     if (newRows.length === 0) {
@@ -251,8 +294,9 @@ export default function LanguageTranslationTab() {
   }, [targetCode, defaultLang, addToast, t]);
 
   // ── Run translation ───────────────────────────────────────────────────────
-  // SOURCE is always defaultLang. TARGET is the selected targetCode.
-  // If targetCode === defaultLang, translation is a no-op (same language).
+  // UI strings SOURCE is always EN (DataInitializer seeds EN as canonical source).
+  // Locale content SOURCE is defaultLang (content is authored in the default language).
+  // TARGET is the selected targetCode — any active language including the default.
   const handleStartTranslation = useCallback(async () => {
     const selectedRows = rows.filter(r => r.selected);
     if (!targetCode || selectedRows.length === 0 || running) return;
@@ -264,10 +308,13 @@ export default function LanguageTranslationTab() {
     let done = 0;
     const total = selectedRows.length;
 
-    // Determine source language name for Kimi prompt
-    const sourceLang = allLanguages.find(l => l.code === defaultLang);
-    const targetLang = allLanguages.find(l => l.code === targetCode);
-    const sourceLabel = sourceLang?.name || defaultLang;
+    // UI strings always from EN — DataInitializer seeds EN as the canonical source.
+    // Locale content sections from defaultLang — that is where content is authored.
+    const enLang             = allLanguages.find(l => l.code === 'en');
+    const contentSourceLang  = allLanguages.find(l => l.code === defaultLang);
+    const targetLang         = allLanguages.find(l => l.code === targetCode);
+    const uiSourceLabel      = enLang?.name || 'English';
+    const contentSourceLabel = contentSourceLang?.name || defaultLang;
     const targetLabel = targetLang?.name || targetCode;
 
     for (const row of selectedRows) {
@@ -278,7 +325,7 @@ export default function LanguageTranslationTab() {
       try {
         // ── UI Strings ───────────────────────────────────────────────
         if (row.key === '__ui_strings__') {
-          const uiRes = await i18nApi.getUiStrings(defaultLang);
+          const uiRes = await i18nApi.getUiStrings('en'); // Always from EN
           const allKeys = Object.entries(uiRes.data.data || {}) as [string, string][];
 
           // Translate in batches of 50
@@ -292,7 +339,7 @@ export default function LanguageTranslationTab() {
                 max_tokens: 2000,
                 messages: [{
                   role: 'user',
-                  content: `Translate these UI strings from ${sourceLabel} to ${targetLabel}. Keep keys identical. Only translate the values. Return ONLY valid JSON, no explanation, no markdown.\n${JSON.stringify(batch)}`,
+                  content: `Translate these UI strings from ${uiSourceLabel} to ${targetLabel}. Keep keys identical. Only translate the values. Return ONLY valid JSON, no explanation, no markdown.\n${JSON.stringify(batch)}`,
                 }],
               });
 
@@ -317,6 +364,30 @@ export default function LanguageTranslationTab() {
 
           if (!abortRef.current) updateRow(row.key, { status: 'done' });
 
+        } else if (row.key === '__nda__') {
+          // ── Site Agreement (NDA) ──────────────────────────────────
+          // Always translates text_en → text_{targetCode}.
+          // Spreads existing nda object to preserve text_en, title, showMode.
+          const cfgRes     = await configApi.get();
+          const currentNda = ((cfgRes.data?.data?.nda as Record<string, unknown>) || {});
+          const ndaEn      = (currentNda.text_en as string || '').trim();
+          if (ndaEn) {
+            const res = await kimiApi.chat({
+              model: 'moonshot-v1-32k',
+              max_tokens: 3000,
+              messages: [{
+                role: 'user',
+                content: `Translate this Site Agreement from English to ${targetLabel}. Preserve all Markdown formatting (# headings, **bold**, - bullets). Return ONLY the translated text, no explanation.\n\n${ndaEn}`,
+              }],
+            });
+            const translated = (res.data?.choices?.[0]?.message?.content || '').trim();
+            if (translated) {
+              // Spread existing nda to preserve text_en, title, showMode
+              await configApi.save({ nda: { ...currentNda, [`text_${targetCode}`]: translated } });
+            }
+          }
+          updateRow(row.key, { status: 'done' });
+
         } else {
           // ── Locale content section ────────────────────────────────
           const secRes = await i18nApi.getLocaleSection(defaultLang, row.key);
@@ -329,7 +400,7 @@ export default function LanguageTranslationTab() {
               max_tokens: 4000,
               messages: [{
                 role: 'user',
-                content: `Translate all text values in this JSON from ${sourceLabel} to ${targetLabel}. Keep JSON structure and keys identical. Only translate text values \u2014 do not translate IDs, status values (Planned, In Progress, Completed, Delayed, On Hold), dates, or technical identifiers. Return ONLY valid JSON, no explanation, no markdown.\n${JSON.stringify(content)}`,
+                content: `Translate all text values in this JSON from ${contentSourceLabel} to ${targetLabel}. Keep JSON structure and keys identical. Only translate text values \u2014 do not translate IDs, status values (Planned, In Progress, Completed, Delayed, On Hold), dates, or technical identifiers. Return ONLY valid JSON, no explanation, no markdown.\n${JSON.stringify(content)}`,
               }],
             });
 
@@ -600,23 +671,17 @@ export default function LanguageTranslationTab() {
       <div style={cardSt}>
         <SectionHeading color="var(--purple)" label={t('lt_ai_translation', 'AI Translation')} />
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-          {/* Source (read-only = default language) */}
-          <div>
-            <label style={labelSt}>{t('lt_source_label', 'Source')}</label>
-            <div style={{ ...inputSt, background: 'var(--bg-overlay)', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-              {defaultLangObj ? `${defaultLangObj.nameNative} (${defaultLangObj.code.toUpperCase()})` : defaultLang.toUpperCase()}
-            </div>
-          </div>
-          {/* Target */}
-          <div>
-            <label style={labelSt}>{t('lt_target_lang', 'Target Language')}</label>
-            <select value={targetCode} onChange={e => { setTargetCode(e.target.value); setRows([]); }} style={selectSt}>
-              <option value="">{t('lt_translate_to', 'Translate to')}\u2026</option>
-              {allLanguages.filter(l => l.code !== defaultLang && l.isActive).map(l => (
-                <option key={l.id} value={l.code}>{l.nameNative} ({l.code.toUpperCase()})</option>
-              ))}
-            </select>
+        {/* TARGET only — source is always EN internally (never shown to avoid confusion) */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelSt}>{t('lt_target_lang', 'Target Language')}</label>
+          <select value={targetCode} onChange={e => { setTargetCode(e.target.value); setRows([]); }} style={selectSt}>
+            <option value="">{t('lt_translate_to', 'Translate to') + '\u2026'}</option>
+            {allLanguages.filter(l => l.isActive).map(l => (
+              <option key={l.id} value={l.code}>{l.nameNative} ({l.code.toUpperCase()})</option>
+            ))}
+          </select>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>
+            {t('lt_source_always_en', 'Hub always translates from English (EN)')}
           </div>
         </div>
 

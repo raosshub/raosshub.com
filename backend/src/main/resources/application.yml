@@ -68,6 +68,14 @@ app:
     region: us-east-1
     path-style-access: true
 
+  storage:
+    local:
+      # Set APP_STORAGE_LOCAL_ENABLED=true on the test site to skip MinIO entirely.
+      # Files are saved to disk under the path below and served via /api/files/serve/.
+      # Keep false (default) on the main site — MinIO handles storage there.
+      enabled: ${APP_STORAGE_LOCAL_ENABLED:true}
+      path: ${APP_STORAGE_LOCAL_PATH:./local-storage}
+
   kimi:
     api-key: ${APP_KIMI_API_KEY:}
     base-url: https://api.moonshot.cn/v1

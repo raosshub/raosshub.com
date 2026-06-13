@@ -33,13 +33,13 @@ function colBorderColor(items: any[]): string {
 }
 
 // Format YYYY-MM-DD → "1 Mar 2026" (confirmed format by user)
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string, locale = 'en-GB'): string {
   if (!dateStr) return '';
   try {
     // Append T00:00:00 to prevent timezone offset shifting the day
     const d = new Date(dateStr + 'T00:00:00');
     if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    return d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
   } catch {
     return dateStr;
   }
@@ -53,6 +53,22 @@ interface ActionItem { title: string; priority: string; teamId: string; teamName
 // ─── Component ────────────────────────────────────────────────────────────────
 const OverviewPage: React.FC = () => {
   const { t, currentLang, localeContent } = useI18nStore();
+
+  // Locale-aware date formatting
+  const dateLocale = ({ en: 'en-GB', zh: 'zh-CN', ar: 'ar-SA', fr: 'fr-FR', de: 'de-DE', ja: 'ja-JP', ko: 'ko-KR' } as Record<string, string>)[currentLang] || 'en-GB';
+
+  // Translate milestone status stored as English strings in DB
+  const translateStatus = (status: string): string => {
+    const keyMap: Record<string, string> = {
+      'Planned':     'status_planned',
+      'In Progress': 'status_in_progress',
+      'Completed':   'status_completed',
+      'Delayed':     'status_delayed',
+      'On Hold':     'status_on_hold',
+    };
+    const key = keyMap[status];
+    return key ? t(key, status) : status;
+  };
   const { sidebarCollapsed }              = useThemeStore();
   const { identity }                      = useConfigStore();
   const [lightbox, setLightbox]           = useState<string | null>(null);
@@ -109,8 +125,8 @@ const OverviewPage: React.FC = () => {
       if (SKIP.has(key) || !section || typeof section !== 'object') return;
       if (Array.isArray(section.actions)) {
         section.actions.forEach((a: any) => all.push({
-          title:    a.action || a.title || 'Untitled',
-          priority: a.priority || 'Medium',
+          title:    a.action || a.title || t('ov_untitled', 'Untitled'),
+          priority: a.priority || t('ov_priority_medium', 'Medium'),
           teamId:   key,
           teamName: section.scope?.name || section.name || key,
         }));
@@ -140,7 +156,7 @@ const OverviewPage: React.FC = () => {
       <div style={{ marginBottom: 20, padding: '20px 24px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, lineHeight: 1.2 }}>
-            {identity.projectName || 'The Hub'}
+            {identity.projectName || 'The HUB'}
           </h1>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: identity.description ? 8 : 0 }}>
             {[identity.productCode, identity.companyName].filter(Boolean).join(' · ')}
@@ -220,7 +236,7 @@ const OverviewPage: React.FC = () => {
                     {hasModel ? t('ov_3d_viewer', '3D Product Viewer') : t('ov_product_image', 'Product Image')}
                   </span>
                 </div>
-                {hasModel && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Drag to rotate</span>}
+                {hasModel && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t('ov_drag_rotate', 'Drag to rotate')}</span>}
               </div>
               <div style={{ padding: hasModel ? 0 : 16 }}>
                 {hasModel
@@ -286,12 +302,12 @@ const OverviewPage: React.FC = () => {
                                 ? t('milestone_end_date',   'End Date')
                                 : t('milestone_start_date', 'Start Date')}:
                             </span>
-                            <span>{formatDate(item.date)}</span>
+                            <span>{formatDate(item.date, dateLocale)}</span>
                           </div>
                         )}
                         {/* Status badge */}
                         <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, border: `1px solid ${MS_COLOR[item.status] || 'var(--text-muted)'}`, color: MS_COLOR[item.status] || 'var(--text-muted)', fontWeight: 600 }}>
-                          {item.status || 'Planned'}
+                          {translateStatus(item.status || 'Planned')}
                         </span>
                       </div>
                     ))}
@@ -371,7 +387,7 @@ const OverviewPage: React.FC = () => {
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 8 }}>
             <Icons.image size={14} />
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{t('ov_gallery', 'Gallery')}</span>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>{productImages.length} {productImages.length === 1 ? 'photo' : 'photos'}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>{productImages.length} {productImages.length === 1 ? t('ov_photo', 'photo') : t('ov_photos', 'photos')}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 2, padding: 2 }}>
             {productImages.map((url, i) => (
@@ -388,7 +404,7 @@ const OverviewPage: React.FC = () => {
         <div style={{ padding: '40px 24px', textAlign: 'center', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
           <div style={{ color: 'var(--text-muted)', marginBottom: 10 }}><Icons.info size={24} /></div>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.65, maxWidth: 440, margin: '0 auto' }}>
-            No content yet. Go to <strong style={{ color: 'var(--text-secondary)' }}>Admin Setup → Dashboard Settings</strong> to add your Executive Summary, Timeline, and Responsibility Matrix.
+            {t('ov_no_content', 'No content yet. Go to Admin Setup → Dashboard Settings to add content.')}
           </p>
         </div>
       )}

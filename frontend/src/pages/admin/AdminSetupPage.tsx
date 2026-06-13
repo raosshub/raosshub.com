@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { useLocation }        from 'react-router-dom';
 import { useAuthStore }    from '@/stores/useAuthStore';
 import { useI18nStore }    from '@/stores/useI18nStore';
 import { Icons }           from '@/components/icons';
@@ -82,12 +83,15 @@ function ComingSoonCard({ tab }: { tab: TabDef }) {
 export default function AdminSetupPage() {
   const { user }     = useAuthStore();
   const { t }        = useI18nStore();
+  const location     = useLocation();
   const isSuperAdmin = (user as any)?.role === 'superadmin';
 
-  const [activeTab,     setActiveTab]     = useState<SetupTab>('identity');
-  const [tabHasChanges, setTabHasChanges] = useState(false);
-  const [tabSaving,     setTabSaving]     = useState(false);
-  const [tabContext,    setTabContext]     = useState<TabContext | null>(null);
+  const initialTab   = ((location.state as any)?.tab as SetupTab) || 'identity';
+  const [activeTab,        setActiveTab]        = useState<SetupTab>(initialTab);
+  const [tabHasChanges,    setTabHasChanges]    = useState(false);
+  const [tabSaving,        setTabSaving]        = useState(false);
+  const [tabContext,       setTabContext]        = useState<TabContext | null>(null);
+  const [translationRunning, setTranslationRunning] = useState(false);
 
   const identityTabRef       = useRef<ProjectIdentityTabHandle>(null);
   const dashboardTabRef      = useRef<DashboardSettingsTabHandle>(null);
@@ -113,6 +117,15 @@ export default function AdminSetupPage() {
   }, []);
 
   const handleTabSwitch = (tab: SetupTab) => {
+    if (translationRunning && activeTab === 'language' && tab !== 'language') {
+      const ok = window.confirm(
+        t('lt_translating_status', 'Translating\u2026') +
+        '\n\n' +
+        'Translation is in progress. Navigating away will stop it. Continue?'
+      );
+      if (!ok) return;
+      // User confirmed — abort is triggered by LanguageTranslationTab unmount cleanup
+    }
     setActiveTab(tab); setTabHasChanges(false); setTabSaving(false);
   };
 
@@ -213,6 +226,7 @@ export default function AdminSetupPage() {
               tabContext={tabContext}
               onNavigateToIntegrations={handleNavigateToIntegrations}
               onClearContext={handleClearContext}
+              onRunningChange={setTranslationRunning}
             />
           )}
           {activeTab === 'dashboard' && (

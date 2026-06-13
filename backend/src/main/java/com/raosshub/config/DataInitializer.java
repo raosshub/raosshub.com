@@ -1,5 +1,6 @@
 package com.raosshub.config;
 
+import com.raosshub.entity.ProjectConfig;
 import com.raosshub.entity.User;
 import com.raosshub.repository.ProjectConfigRepository;
 import com.raosshub.repository.UserRepository;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.security.SecureRandom;
 
 /**
  * Runs on every startup. All inserts use ON CONFLICT DO NOTHING.
@@ -57,11 +59,18 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        // Schema migration — idempotent, safe to run on every startup
+        // Schema migrations — idempotent, safe to run on every startup
         jdbcTemplate.execute(
             "ALTER TABLE nda_agreements ADD COLUMN IF NOT EXISTS accepted_version VARCHAR(50)"
         );
+        jdbcTemplate.execute(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_recovery BOOLEAN DEFAULT FALSE"
+        );
+        jdbcTemplate.execute(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_email VARCHAR(255)"
+        );
         ensureAdminUser(null, null, null);
+        createRecoveryAccountIfMissing();
         seedEnUiMessages();
         seedDefaultNdaText();
     }
@@ -102,24 +111,108 @@ public class DataInitializer implements CommandLineRunner {
         log.info("[Init] Admin user ready ({})", u);
     }
 
+    // ─── Recovery account ─────────────────────────────────────────────────────
+
+    /**
+     * Creates one recovery superadmin account per deployment on first startup.
+     * Idempotent — does nothing if a recovery account already exists.
+     *
+     * The generated credentials are logged ONCE to the console at WARN level.
+     * The admin MUST save them immediately — the raw password is never stored.
+     * After the initial creation, credentials can only be changed via the DB
+     * or via Admin Setup → Integrations → Recovery Account (when built).
+     *
+     * Factory reset never deletes this account (is_recovery = true exclusion
+     * in ConfigService.factoryReset()).
+     */
+    public void createRecoveryAccountIfMissing() {
+        try {
+            boolean exists = userRepository.findAll().stream()
+                .anyMatch(u -> Boolean.TRUE.equals(u.getIsRecovery()));
+            if (exists) return;
+
+            String username = "recovery-" + generateHex(8);
+            String password = generatePassword(20);
+
+            User recovery = new User();
+            recovery.setUsername(username);
+            recovery.setEmail(username);
+            recovery.setFirstName("Recovery");
+            recovery.setLastName("Account");
+            recovery.setRole("superadmin");
+            recovery.setTeams(new String[]{"all"});
+            recovery.setCanViewActivity(false);
+            recovery.setIsActive(true);
+            recovery.setIsRecovery(true);
+            recovery.setPasswordHash(passwordEncoder.encode(password));
+            userRepository.save(recovery);
+
+            log.warn("[Recovery] =====================================================");
+            log.warn("[Recovery] RECOVERY ACCOUNT CREATED — SAVE THESE CREDENTIALS");
+            log.warn("[Recovery] Username : {}", username);
+            log.warn("[Recovery] Password : {}", password);
+            log.warn("[Recovery] Use only if locked out. Never share these.");
+            log.warn("[Recovery] =====================================================");
+
+        } catch (Exception e) {
+            log.error("[Recovery] Failed to create recovery account: {}", e.getMessage());
+        }
+    }
+
+    /** Generates a lowercase hex string of the given length (must be even). */
+    private String generateHex(int length) {
+        byte[] bytes = new byte[length / 2];
+        new SecureRandom().nextBytes(bytes);
+        StringBuilder sb = new StringBuilder(length);
+        for (byte b : bytes) sb.append(String.format("%02x", b));
+        return sb.toString();
+    }
+
+    /**
+     * Generates a random password of the given length.
+     * Excludes visually ambiguous characters: O 0 I l 1
+     * so the customer can read and type it without confusion.
+     */
+    private String generatePassword(int length) {
+        final String chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+        SecureRandom rng   = new SecureRandom();
+        StringBuilder sb   = new StringBuilder(length);
+        for (int i = 0; i < length; i++) sb.append(chars.charAt(rng.nextInt(chars.length())));
+        return sb.toString();
+    }
+
     // ─── Site Agreement ───────────────────────────────────────────────────────
 
     /**
      * Seeds the default Site Agreement text into project_config on every startup
      * if no agreement text is already configured. Idempotent — admin changes in
      * Tab 6 are never overwritten (only seeds when text_en is null or blank).
+     *
+     * Handles post-factory-reset state: configRepository.deleteAll() wipes all
+     * rows, so this method creates a new row when none exists rather than
+     * returning early. Without this, the NDA modal never shows after a factory
+     * reset because resolvePostAuthStage() finds no ndaText and skips the stage.
      */
     @SuppressWarnings("unchecked")
     public void seedDefaultNdaText() {
         try {
             var opt = projectConfigRepository.findFirstByOrderByIdAsc();
-            if (opt.isEmpty()) return; // No config row yet — schema.sql handles fresh installs
 
-            var cfg = opt.get();
-            var raw = cfg.getConfig();
-            if (!(raw instanceof Map)) return;
+            // If no config row exists (factory reset wiped it), create a fresh one.
+            // Previously this returned early, leaving the NDA permanently invisible.
+            Map<String, Object> configMap;
+            ProjectConfig cfg;
+            if (opt.isEmpty()) {
+                cfg       = new ProjectConfig();
+                configMap = new HashMap<>();
+            } else {
+                cfg = opt.get();
+                var raw = cfg.getConfig();
+                configMap = (raw instanceof Map)
+                    ? new HashMap<>((Map<String, Object>) raw)
+                    : new HashMap<>();
+            }
 
-            Map<String, Object> configMap = new HashMap<>((Map<String, Object>) raw);
             Object ndaRaw = configMap.get("nda");
             Map<String, Object> ndaMap = (ndaRaw instanceof Map)
                 ? new HashMap<>((Map<String, Object>) ndaRaw)
@@ -308,7 +401,7 @@ public class DataInitializer implements CommandLineRunner {
         en("tab_identity_label",      "Project Identity & Branding");
         en("tab_identity_desc",       "Name, branding, product visuals, contact, IP notices");
         en("tab_language_label",      "Language & Translation");
-        en("tab_language_desc",       "Default language, add languages, AI translation");
+        en("tab_language_desc",       "Default language, add languages, Hub translation");
         en("tab_dashboard_label",     "Dashboard Settings");
         en("tab_dashboard_desc",      "Executive summary, specs, timeline, responsibility");
         en("tab_users_label",         "Users");
@@ -318,9 +411,9 @@ public class DataInitializer implements CommandLineRunner {
         en("tab_notifications_label", "Notification Settings");
         en("tab_notifications_desc",  "Version display, agreement text & enforcement");
         en("tab_integrations_label",  "Integrations");
-        en("tab_integrations_desc",   "Kimi API key, email SMTP, Danger Zone");
+        en("tab_integrations_desc",   "Hub AI, email SMTP, Danger Zone");
         en("tab_hubassist_label",     "Hub Assist");
-        en("tab_hubassist_desc",      "Kimi behavior, prompt templates, rate limits");
+        en("tab_hubassist_desc",      "HUB Assist behavior, prompt templates, rate limits");
         en("tab_auditlog_label",      "Audit Log");
         en("tab_auditlog_desc",       "View-only activity trail");
 
@@ -340,14 +433,14 @@ public class DataInitializer implements CommandLineRunner {
         en("lt_rtl_direction",        "Right-to-left text direction");
         en("lt_cancel",               "Cancel");
         en("lt_add_btn",              "Add");
-        en("lt_ai_translation",       "AI Translation");
+        en("lt_ai_translation",       "Hub Translation");
         en("lt_translate_to",         "Translate to");
         en("lt_source_label",         "Source");
         en("lt_start",                "Start Translation");
         en("lt_stop",                 "Stop");
         en("lt_translating_status",   "Translating\u2026");
         en("lt_preflight",            "Pre-flight Check");
-        en("lt_no_api_key_msg",       "No Kimi API key configured. Go to Admin Setup \u2192 Integrations.");
+        en("lt_no_api_key_msg",       "No Hub AI key configured. Go to Admin Setup \u2192 Integrations.");
         en("lt_complete",             "Translation complete");
         en("lt_sections_label",       "sections");
         en("lt_ui_strings_label",     "UI Strings");
@@ -358,15 +451,15 @@ public class DataInitializer implements CommandLineRunner {
         en("lt_translating_item",     "Translating");
         en("lt_no_sections",          "No content sections found. Add content in Dashboard Settings first.");
         en("lt_target_lang",          "Target Language");
-        en("lt_translation_aborted",  "Translation stopped \u2014 Kimi API key not configured.");
+        en("lt_translation_aborted",  "Translation stopped \u2014 Hub AI key not configured.");
         en("lt_lang_deactivated",     "Language deactivated");
         en("lt_lang_activated",       "Language activated");
         en("lt_default_changed",      "Default language updated");
         en("lt_lang_added",           "Language added");
-        en("lt_kimi_required_title",  "Kimi API Key Required");
-        en("lt_kimi_required_body",   "A Kimi API key is needed to translate UI strings before setting a new default language.");
+        en("lt_kimi_required_title",  "Hub AI Key Required");
+        en("lt_kimi_required_body",   "A Hub AI key is needed to translate UI strings before setting a new default language.");
         en("lt_coverage_title",       "Translation Required Before Setting Default");
-        en("lt_coverage_body",        "is missing UI strings. Kimi will translate all missing strings before setting this as the default language.");
+        en("lt_coverage_body",        "is missing UI strings. Hub will translate all missing strings before setting this as the default language.");
         en("lt_translate_and_default","Translate & Set Default");
         en("lt_do_not_close",         "Do not close this window.");
         en("lt_kimi_testing",         "Testing connection\u2026");
@@ -378,6 +471,8 @@ public class DataInitializer implements CommandLineRunner {
         en("lt_select_none",          "None");
         en("lt_selected",             "selected");
         en("lt_translate_selected",   "Translate Selected");
+        en("lt_source_always_en",     "Hub always translates from English (EN)");
+        en("lt_nda_label",            "Site Agreement");
 
         // ── Dashboard Settings tab (dt_*) ─────────────────────────────────────
         en("dt_exec_summary",        "Executive Summary");
@@ -538,7 +633,7 @@ public class DataInitializer implements CommandLineRunner {
         en("tab6_show_once_hint",        "User accepts once and is never prompted again.");
         en("tab6_save_success",          "Settings saved");
         en("tab6_save_fail",             "Save failed");
-        en("tab6_translate_no_kimi",     "Kimi API key not configured \u2014 agreement saved in EN only");
+        en("tab6_translate_no_kimi",     "Hub AI key not configured \u2014 agreement saved in EN only");
         en("tab6_translating",           "Translating to {lang}\u2026");
         en("tab6_translate_partial",     "Translation failed for: {langs}");
 
@@ -590,6 +685,7 @@ public class DataInitializer implements CommandLineRunner {
         en("tab1_section_icp",           "Intellectual Property & Compliance");
         en("tab1_icp_zh",                "ICP \u2014 Chinese");
         en("tab1_icp_zh_hint",           "Shown when Chinese language is selected");
+        en("tab1_icp_zh_ph",             "\u7ca4ICP\u590700000000\u53f7");  // fake placeholder — not a real ICP number
         en("tab1_icp_en",                "ICP \u2014 English");
         en("tab1_icp_en_hint",           "Shown for all other languages");
         en("tab1_patent",                "Patent Notice");
@@ -646,12 +742,12 @@ public class DataInitializer implements CommandLineRunner {
         en("setup_s2_no_langs",       "No additional languages have been added yet. You can add languages in Admin Setup after completing this setup.");
         en("setup_s2_keep_en",        "Keep English as default");
         en("setup_s2_hint",           "After setup completes, go to Admin Setup > Language & Translation to translate UI strings.");
-        en("setup_s3_label",          "AI Translation");
-        en("setup_s3_title_required", "AI Translation Key (Required)");
-        en("setup_s3_title_optional", "AI Translation Key (Optional)");
-        en("setup_s3_desc_required",  "A Kimi API key is required to translate the interface to {lang}.");
-        en("setup_s3_desc_optional",  "Add a Kimi API key now or later in Admin Setup > Integrations.");
-        en("setup_s3_key_label",      "Kimi API Key");
+        en("setup_s3_label",          "Hub Translation");
+        en("setup_s3_title_required", "Hub Translation Key (Required)");
+        en("setup_s3_title_optional", "Hub Translation Key (Optional)");
+        en("setup_s3_desc_required",  "A Hub AI key is required to translate the interface to {lang}.");
+        en("setup_s3_desc_optional",  "Add a Hub AI key now or later in Admin Setup > Integrations.");
+        en("setup_s3_key_label",      "Hub AI Key");
         en("setup_s3_key_ph",         "sk-...");
         en("setup_s3_test_btn",       "Test Connection");
         en("setup_s3_testing",        "Testing\u2026");
@@ -678,8 +774,8 @@ public class DataInitializer implements CommandLineRunner {
         en("change_lang_s1_title",         "Admin Credentials");
         en("change_lang_s1_keep",          "Keep current credentials");
         en("change_lang_s1_desc",          "Optionally update the admin credentials for this deployment.");
-        en("change_lang_s2_label",         "Kimi Key");
-        en("change_lang_s2_title",         "Kimi API Key");
+        en("change_lang_s2_label",         "Hub AI Key");
+        en("change_lang_s2_title",         "Hub AI Key");
         en("change_lang_s2_desc",          "Required to translate UI strings to the new default language.");
         en("change_lang_s3_label",         "Factory Reset");
         en("change_lang_s3_title",         "Factory Reset");
@@ -720,6 +816,12 @@ public class DataInitializer implements CommandLineRunner {
         en("change_lang_resume_banner",    "A previous language setup was interrupted. Resume from Step {n}?");
         en("change_lang_resume_btn",       "Resume");
         en("change_lang_resume_discard",   "Start over");
+	en("change_lang_s6_phase1",    	   "Default language set");
+	en("change_lang_s6_phase2",	   "Translating UI strings");
+	en("change_lang_s6_trans_done",	   "Translation complete");
+	en("change_lang_s6_trans_warn",    "Translation incomplete — {n} strings failed. Re-run from Language & Translation tab.");
+	en("change_lang_s6_trans_fail",    "Translation could not start. Go to Language & Translation to translate later.");
+	en("change_lang_s6_trans_skip",    "No Kimi key configured — translation skipped. Go to Language & Translation to translate later.");
 
         log.info("[Init] EN UI message seeds applied");
     }

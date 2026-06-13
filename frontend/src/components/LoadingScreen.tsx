@@ -27,7 +27,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ text = 'Initialising...' 
           marginBottom: 32,
         }}
       >
-        The <span style={{ color: 'var(--accent)' }}>Hub</span>
+        The <span style={{ color: 'var(--accent)' }}>HUB</span>
       </div>
       <div
         style={{

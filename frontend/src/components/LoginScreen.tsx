@@ -214,10 +214,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ backdropOnly = false }) => {
 
             <form onSubmit={handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={labelSt}>{t('login_username', 'Email')}</label>
-                <input type="email" value={username} onChange={e => setUsername(e.target.value)}
-                  autoComplete="email" autoFocus
-                  placeholder={t('login_username_placeholder', 'Enter your email address')}
+                <label style={labelSt}>{t('login_label_email', 'Email / Username')}</label>
+                <input type="text" value={username} onChange={e => setUsername(e.target.value)}
+                  autoComplete="username" autoFocus
+                  placeholder={t('login_username_placeholder', 'Enter your email or username')}
                   style={inputSt} onFocus={onFocus} onBlur={onBlur} />
               </div>
 

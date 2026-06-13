@@ -51,7 +51,7 @@ interface ConfigState {
   notifications: NotificationsConfig;
   loaded:        boolean;
   load:             () => Promise<void>;
-  getBreadcrumb:    (pathname: string) => string;
+  getBreadcrumb:    (pathname: string, t: (key: string, fallback?: string) => string) => string;
 }
 
 const defaultIdentity: ProjectIdentity = {
@@ -61,14 +61,6 @@ const defaultIdentity: ProjectIdentity = {
   referenceLinks: '', icpZh: '', icpEn: '', patentNotice: '', trademarkNotice: '',
   copyrightNotice: '', chip: '', name: '', version: '', refLink1: '', refLink2: '',
   githubUrl: '', startDate: '', targetDate: '', updatedLabel: '',
-};
-
-const BREADCRUMB_MAP: Record<string, string> = {
-  '/':            'Overview',
-  '/settings':    'Settings',
-  '/assistant':   'HUB Assist',
-  '/activity-log':'Activity Log',
-  '/admin/setup': 'Admin / Setup',
 };
 
 export const useConfigStore = create<ConfigState>((set, get) => ({
@@ -106,8 +98,15 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     }
   },
 
-  getBreadcrumb: (pathname) => {
-    if (BREADCRUMB_MAP[pathname]) return BREADCRUMB_MAP[pathname];
+  getBreadcrumb: (pathname, t) => {
+    const map: Record<string, string> = {
+      '/':             t('nav_overview',      'Overview'),
+      '/settings':     t('nav_settings',      'Settings'),
+      '/assistant':    t('nav_hub_assist',    'HUB Assist'),
+      '/activity-log': t('nav_activity_log',  'Activity Log'),
+      '/admin/setup':  t('admin_setup_title', 'Admin Setup'),
+    };
+    if (map[pathname]) return map[pathname];
     const teamMatch = pathname.match(/^\/team\/(.+)$/);
     if (teamMatch) {
       const { identity } = get();

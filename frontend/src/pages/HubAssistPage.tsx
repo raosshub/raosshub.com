@@ -40,7 +40,7 @@ const saveSessions = (sessions: ChatSession[]) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
 };
 
-const DEFAULT_SYSTEM_PROMPT = `You are HUB Assist, an AI assistant for the RAOSS Hub project management system. You help with project planning, technical documentation, and team coordination. You have access to all team scopes, deliverables, and timelines. Be concise and professional.`;
+const DEFAULT_SYSTEM_PROMPT = `You are HUB Assist, an AI assistant for the HUB project management system. You help with project planning, technical documentation, and team coordination. You have access to all team scopes, deliverables, and timelines. Be concise and professional.`;
 
 const TEAMS = ['react', 'pcba', 'firmware', 'tft', 'router', 'charger', 'shell'];
 
@@ -87,7 +87,12 @@ const detectTaskType = (lower: string): string => {
 };
 
 // ─── Component ────────────────────────────────────────────────
-const HubAssistPage: React.FC = () => {
+interface HubAssistPageProps {
+  panelMode?: boolean;
+  onClose?:   () => void;
+}
+
+const HubAssistPage: React.FC<HubAssistPageProps> = ({ panelMode = false, onClose }) => {
   const { t, currentLang } = useI18nStore();
   const { addToast } = useNotificationStore();
   const { user } = useAuthStore();
@@ -122,7 +127,7 @@ const HubAssistPage: React.FC = () => {
           id: generateId(),
           role: 'assistant',
           content: currentLang === 'zh'
-            ? `欢迎使用 **HUB Assist**！\n\n我是 RAOSS Hub 项目管理系统的 AI 助手，可帮助您处理：\n\n- **项目规划**与进度管理\n- **技术文档**与代码审查\n- **团队协调**与任务管理\n\n请输入消息开始对话。`
+            ? `欢迎使用 **HUB Assist**！\n\n我是 HUB 项目管理系统的助手，可帮助您处理：\n\n- **项目规划**与进度管理\n- **技术文档**与代码审查\n- **团队协调**与任务管理\n\n请输入消息开始对话。`
             : `Welcome to **HUB Assist**!\n\nI can help you with:\n\n- **Project planning** and scheduling\n- **Technical documentation** and code review\n- **Team coordination** and task management\n\nType a message to get started.`,
           timestamp: Date.now(),
         }],
@@ -339,9 +344,10 @@ const HubAssistPage: React.FC = () => {
   const sidebarWidth = 240;
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - var(--topbar-h) - 48px)', gap: 0, borderRadius: 'var(--radius)', overflow: 'hidden', border: '1px solid var(--border)' }}>
+    <div style={{ display: 'flex', height: panelMode ? '100%' : 'calc(100vh - var(--topbar-h) - 48px)', borderRadius: panelMode ? 0 : 'var(--radius)', overflow: 'hidden', border: panelMode ? 'none' : '1px solid var(--border)' }}>
 
-      {/* Sessions sidebar */}
+      {/* Sessions sidebar — hidden in panel mode */}
+      {!panelMode && (
       <div style={{ width: sidebarWidth, flexShrink: 0, background: 'var(--bg-elevated)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid var(--border-subtle)' }}>
           <button
@@ -420,6 +426,7 @@ const HubAssistPage: React.FC = () => {
           </div>
         )}
       </div>
+      )} {/* end sessions sidebar */}
 
       {/* Chat area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-base)', minWidth: 0 }}>
@@ -431,16 +438,36 @@ const HubAssistPage: React.FC = () => {
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
               {isLoading
                 ? (currentLang === 'zh' ? 'HUB 助手正在输入…' : 'HUB Assist is typing...')
-                : (currentLang === 'zh' ? '由 Moonshot AI 提供支持' : 'Powered by Moonshot AI')}
+                : (currentLang === 'zh' ? 'HUB 智能助手' : 'HUB AI Assistant')}
             </div>
           </div>
-          <button
-            onClick={() => setShowHelpModal(true)}
-            style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-            title={currentLang === 'zh' ? '帮助' : 'Help'}
-          >
-            <Icons.info size={16} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {panelMode && (
+              <button
+                onClick={createSession}
+                style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                title={currentLang === 'zh' ? '新会话' : 'New Chat'}
+              >
+                <Icons.plus size={16} />
+              </button>
+            )}
+            <button
+              onClick={() => setShowHelpModal(true)}
+              style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              title={currentLang === 'zh' ? '帮助' : 'Help'}
+            >
+              <Icons.info size={16} />
+            </button>
+            {panelMode && onClose && (
+              <button
+                onClick={onClose}
+                style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                title={currentLang === 'zh' ? '关闭' : 'Close'}
+              >
+                <Icons.close size={16} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Messages */}
